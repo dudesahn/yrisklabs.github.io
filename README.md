@@ -33,6 +33,9 @@ Report files are generated copies: edit the canonical Markdown, then synchronize
 Only image paths and JSON front matter differ. The front matter (valid YAML) holds
 search/listing metadata and publication controls; it does not generate article
 content. Existing publication controls and publication dates survive synchronization.
+The reports listing displays and sorts by the Markdown table's `Review date`,
+read on each build. Missing or invalid review dates fail the build rather than
+falling back to an older publication date. Listing excerpts remain in front matter.
 The importer derives the plain search title and optional listing logo from the
 canonical `Asset Review: [logo] Protocol Token` heading. Title logos stay inline
 and scale with the text; no separate logo lookup is needed here.
