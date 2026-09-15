@@ -54,6 +54,8 @@ LendSwift lends to U.S. consumers. 3Jane’s facility provides up to $10 million
 
 The 11 September facility report covers 21,303 loans and $5.71 million of principal funded by 3Jane. About 38.4% of the gross loan balance is at least 16 days late, with a weighted borrower APR of approximately 693%.[^facility-quality] After deductions for delinquency and payment shortfalls, and including collection cash, reported net collateral is $8.26 million against $5.79 million of senior obligations.[^facility-quality] The resulting 43% excess collateral exceeds the required 33%.[^facility-quality] This provides meaningful protection if the loans and cash are worth their reported amounts; eventual losses depend on collections.
 
+Thousands of underlying loans still depend on a small number of originators and servicers.[^facilities-data][^fcc-legal]
+
 ### Collections and legal protections
 
 3Jane describes special-purpose vehicles separating facility assets from the originator and sponsor, together with controlled collection accounts.[^fcc-legal] Erebor Bank handles conversion, facility wires and collections before funds return onchain.[^erebor] The $3.08 million listed as bank cash remains an operator disclosure, with its balance and segregation unverified; it is unavailable for direct Ethereum withdrawals.[^snapshot][^facilities-data]
@@ -74,7 +76,7 @@ The strategy may lend up to 100% of available waUSDC, with the separate limit ti
 
 When the strategy reports a profit, 7.5% is allocated to sUSD3 through newly issued shares; the remainder raises USD3’s share value over three days.[^usd3-code][^snapshot] Interest can enter reported value before borrowers pay it. Separate JANE rewards are currently non-transferable and cannot be spent as USDC income.[^jane-incentives][^jane-state]
 
-Reported losses first consume locked profit, then burn USD3 held by sUSD3.[^usd3-code] The junior claim is worth about 7.66 million USDC, with roughly $15,700 of profit still locked.[^snapshot] Figure 1 shows how losses beyond that buffer reduce other holders’ claims.
+The junior buffer consists of USD3 shares held by sUSD3. Reported losses first consume locked profit, then burn those shares, making junior holders absorb the loss without replenishing the vault’s USDC.[^usd3-code][^susd3-code] The junior claim is worth about 7.66 million USDC, with roughly $15,700 of profit still locked.[^snapshot] Figure 1 shows how losses beyond that buffer reduce other holders’ claims.
 
 ![Other USD3 holders begin absorbing losses after 11.35 percent of the current credit book is lost; a 20 percent credit loss causes an 8.09 percent claim haircut.](../../assets/reports/usd3-ethereum/figures/credit-loss-sensitivity.png)
 

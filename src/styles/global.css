@@ -302,13 +302,13 @@ main {
 
 .prose h2 {
   margin: 2.2em 0 0.7em;
-  font-size: 17px;
+  font-size: 19px;
   letter-spacing: -0.025em;
 }
 
 .prose h3 {
-  margin: 2em 0 0.7em;
-  font-size: 13px;
+  margin: 2em 0 0.6em;
+  font-size: 15px;
 }
 
 .prose p,
