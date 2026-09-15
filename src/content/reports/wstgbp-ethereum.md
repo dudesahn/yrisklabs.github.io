@@ -4,7 +4,7 @@
   "description": "wstGBP gives holders exposure to tokenised sterling through tGBP and an operator-published conversion rate. Depositing tGBP creates shares; redeeming shares creates a claim payable in tGBP. The website attributes rate growth to a commercial agreement with tGBP issuer BCP Technologies, but the binding protocol terms describe discretionary awards from the programme operator’s corporate funds and deny that holders receive reserve income. The token balance does not rebase, and “staked” does not mean validator staking. The rate is discretionary rather than a contractual promise of income.",
   "publishedAt": "2026-09-08",
   "tokenLogo": "../../assets/reports/wstgbp-ethereum/figures/token-logo.svg",
-  "draft": false,
+  "draft": true,
   "reviewedBy": [
     "Wavey"
   ]
