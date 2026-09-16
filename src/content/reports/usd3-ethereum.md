@@ -4,7 +4,7 @@
   "description": "USD3 is the senior share of 3Jane’s pooled lending strategy. Depositors supply USDC and receive USD3 shares, which earn income from loans and Aave deposits. A junior tranche, sUSD3, receives part of the profits in exchange for absorbing losses before other USD3 holders.",
   "publishedAt": "2026-09-08",
   "tokenLogo": "../../assets/reports/usd3-ethereum/figures/token-logo.svg",
-  "draft": false,
+  "draft": true,
   "reviewedBy": [
     "Wavey"
   ]
