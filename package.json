@@ -9,16 +9,20 @@
   "scripts": {
     "dev": "astro dev",
     "build": "npm test && node scripts/check-chart-assets.mjs && astro sync --force && astro check && astro build && node scripts/check-built-charts.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "playwright test",
+    "test:all": "npm run build && npm run test:browser"
   },
   "dependencies": {
     "@astrojs/rss": "4.0.19",
     "@astrojs/sitemap": "3.7.3",
+    "@noble/hashes": "2.4.0",
     "astro": "7.2.4",
     "mermaid": "11.17.2"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@playwright/test": "1.63.0",
     "typescript": "6.0.2"
   }
 }

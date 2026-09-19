@@ -23,6 +23,13 @@ support hierarchy rather than introducing another signature color. Keep text and
 data marks legible against their actual background. Blue is optional; do not add
 it merely to make an otherwise complete composition more colorful.
 
+Functional feedback may use muted green (`#356447`) for confirmed success,
+amber (`#805D20`) for recoverable warnings, and red (`#A23F3B`) for validation
+errors or failed actions. Reserve these colors for short status messages and thin
+error borders or rules. Pair them with meaningful text or a symbol; keep ordinary
+fields, buttons and backgrounds neutral, with blue for keyboard focus. Do not
+color every completed field or add decorative status badges.
+
 Font reference:
 
 - Reference source used to prepare the identity:
@@ -44,6 +51,8 @@ confirm that their use is permitted under the current Apple Fonts terms.
 - **Identity and metadata:** SF Mono Regular
 - **Editorial titles:** Newsreader 72pt Regular
 - **Interfaces and dense tables:** system sans-serif
+- **Website forms and their printed responses:** SF Mono Regular, using the same
+  local font and monospace fallback as the surrounding site
 - **Numbers:** tabular figures wherever values are compared
 - **Chart text:** SF Mono, including titles, axes, labels and annotations
 

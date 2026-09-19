@@ -1,0 +1,154 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import {
+  detailFields, intakeQuestions, intakeIntroduction, intakeSupportingMaterial,
+  intakeConfidentiality, intakeTitle,
+} from "../lib/asset-intake.mjs";
+import "../styles/asset-intake.css";
+import { intakeNetworks } from "../lib/token-lookup.mjs";
+---
+
+<BaseLayout title="Asset review intake" description="Share your team's perspective for a yRisk asset review." noindex>
+  <div class="intake" data-intake>
+    <div class="intake-screen">
+      <header class="intake-heading">
+        <h1>Asset review intake</h1>
+        <p class="intake-intro">{intakeIntroduction}</p>
+        <div class="intake-draft-feedback">
+          <p id="save-status" class="intake-save-status" role="status" aria-live="polite">Draft saves in this browser</p>
+          <p id="draft-status" class="intake-draft-status" role="alert" hidden></p>
+        </div>
+      </header>
+
+      <noscript>
+        <p class="intake-notice">Enable JavaScript to save a draft, download your answers, or prepare a PDF. Answers are processed in your browser.</p>
+      </noscript>
+
+      <!-- A dialog-method form cannot navigate or transmit answers if a script fails. -->
+      <form id="intake-form" method="dialog" novalidate>
+        <div id="intake-errors" class="intake-errors" role="alert" tabindex="-1" hidden>
+          <p>Check these fields before exporting.</p>
+          <ul id="intake-error-list"></ul>
+        </div>
+
+        <fieldset class="intake-details intake-asset">
+          <legend>Asset</legend>
+          <div class="intake-asset-query">
+            <div class="intake-field">
+              <label for="chain">Network</label>
+              <select id="chain" name="chain" required aria-describedby="chain-error">
+                {intakeNetworks.map((network) => <option value={network.name} selected={network.id === 1}>{network.name}</option>)}
+              </select>
+              <p class="intake-field-error" id="chain-error" hidden>Select a network.</p>
+            </div>
+            <div class="intake-field">
+              <label for="contract-address">Address or explorer link</label>
+              <input id="contract-address" name="contract-address" type="text" required autocomplete="off"
+                spellcheck="false" autocapitalize="off" aria-describedby="contract-address-error token-lookup-status" />
+              <p class="intake-field-error" id="contract-address-error" hidden>Required</p>
+            </div>
+          </div>
+          <div class="intake-lookup">
+            <p id="token-lookup-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            <div class="intake-lookup-actions">
+              <button id="enter-token-manually" type="button">Enter manually</button>
+              <button id="apply-token-details" type="button" hidden>Use found details</button>
+              <button id="retry-token-lookup" type="button" hidden>Retry</button>
+            </div>
+          </div>
+          <div id="asset-metadata" class="intake-field-grid intake-metadata" hidden>
+            {detailFields.filter((field) => ["asset-name", "asset-symbol"].includes(field.id)).map((field) => (
+              <div class="intake-field">
+                <label for={field.id}>
+                  {field.id === "asset-name" && <img id="token-logo" width="16" height="16" alt="" referrerpolicy="no-referrer" hidden />}
+                  {field.id === "asset-name" ? "Name" : "Symbol"}
+                </label>
+                <input id={field.id} name={field.id} type="text" required autocomplete="off" aria-describedby={`${field.id}-error`} />
+                <p class="intake-field-error" id={`${field.id}-error`} hidden>Required</p>
+              </div>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset class="intake-details">
+          <legend>Contact</legend>
+          <div class="intake-field-grid">
+            {detailFields.filter((field) => field.group === "contact").map((field) => (
+              <div class="intake-field">
+                <label for={field.id}>{field.id === "respondent-name" ? "Name" : field.label}</label>
+                <input id={field.id} name={field.id} type={field.id === "email" ? "email" : "text"}
+                  required={!["email", "telegram"].includes(field.id)} autocomplete={field.autocomplete}
+                  autocapitalize={["email", "telegram"].includes(field.id) ? "off" : undefined}
+                  spellcheck={["email", "telegram"].includes(field.id) ? "false" : undefined}
+                  placeholder={field.id === "telegram" ? "@username" : undefined}
+                  aria-describedby={`${field.id}-error${["email", "telegram"].includes(field.id) ? " contact-hint" : ""}`} />
+                <p class="intake-field-error" id={`${field.id}-error`} hidden>Required</p>
+              </div>
+            ))}
+          </div>
+          <p id="contact-hint" class="intake-hint">Email or Telegram is enough.</p>
+        </fieldset>
+
+        <section class="intake-questions" aria-labelledby="questions-heading">
+          <div class="intake-section-heading">
+            <h2 id="questions-heading">Questions</h2>
+            <p>Answer each question. Use “N/A” where appropriate.</p>
+          </div>
+          {intakeQuestions.map((question, index) => (
+            <div class="intake-question">
+              <h3><label for={question.id}><span class="intake-number">{String(index + 1).padStart(2, "0")}</span><span>{question.label}</span></label></h3>
+              <p class="intake-description" id={`${question.id}-description`}>{question.description}</p>
+              <textarea id={question.id} name={question.id} rows="3" required
+                aria-describedby={`${question.id}-description ${question.id}-error`}></textarea>
+              <p class="intake-field-error" id={`${question.id}-error`} hidden>Required</p>
+            </div>
+          ))}
+        </section>
+
+        <footer class="intake-export">
+          <h2>Share responses</h2>
+          <p class="intake-sharing-note">Send to your yRisk contact.</p>
+          <div class="intake-actions">
+            <button id="download-markdown" class="intake-button" type="button" disabled>Download .md</button>
+            <button id="copy-responses" class="intake-button" type="button" disabled>Copy</button>
+          </div>
+          <p id="export-status" role="status" aria-live="polite"></p>
+        </footer>
+      </form>
+    </div>
+
+    <!-- Text nodes, rather than form controls, allow complete answers to paginate. -->
+    <article class="intake-print" data-complete="false" aria-hidden="true">
+      <h1>{intakeTitle}</h1>
+      <p class="intake-print-warning">Complete the required fields before printing.</p>
+      <div class="intake-print-content">
+        <p class="intake-print-date">Exported (UTC): <span id="print-export-date"></span></p>
+        <p>{intakeIntroduction}</p>
+        {(["asset", "contact"] as const).map((group) => (
+          <section>
+            <h2>{group === "asset" ? "Asset details" : "Contact details"}</h2>
+            <dl>
+              {detailFields.filter((field) => field.group === group).map((field) => (
+                <div><dt>{field.label}</dt><dd data-print-value={field.id}></dd></div>
+              ))}
+            </dl>
+          </section>
+        ))}
+        {intakeQuestions.map((question, index) => (
+          <section class="intake-print-question">
+            <h2>{index + 1}. {question.label}</h2>
+            <p class="intake-print-description">{question.description}</p>
+            <div class="intake-print-answer" data-print-value={question.id}></div>
+          </section>
+        ))}
+        <div class="intake-print-footer">
+          <p>{intakeSupportingMaterial} {intakeConfidentiality}</p>
+        </div>
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<script>
+  import "../scripts/asset-intake";
+</script>

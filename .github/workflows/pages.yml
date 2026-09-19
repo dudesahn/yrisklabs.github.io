@@ -25,6 +25,10 @@ jobs:
         with:
           node-version: 24
           package-manager: npm@11.8.0
+      - name: Install browsers for testing
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run browser tests
+        run: npm run test:browser
 
   deploy:
     environment:
