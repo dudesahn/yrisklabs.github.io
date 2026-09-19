@@ -10,7 +10,8 @@ export default defineConfig({
   },
   integrations: [
     sitemap({
-      filter: (page) => !page.startsWith("https://yrisklabs.com/lr-handoff"),
+      filter: (page) => !["/lr-handoff", "/asset-intake"].some((path) =>
+        new URL(page).pathname.startsWith(path)),
     }),
   ],
 });

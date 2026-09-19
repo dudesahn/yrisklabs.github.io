@@ -57,9 +57,34 @@ authority.
 
 ## Architecture
 
-The site ships no client-side framework or browser JavaScript. Astro generates
-plain HTML, CSS, RSS, and sitemaps. Report front matter is schema-validated;
-layouts and shared metadata remain small Astro components.
+The site ships no client-side framework. Astro generates plain HTML, CSS, RSS,
+and sitemaps. The asset intake page has a small, page-specific browser script.
+Report front matter is schema-validated; layouts and shared metadata remain
+small Astro components.
+
+### Asset intake
+
+Share `/asset-intake/` directly with prospective partners. It is omitted from the
+navigation and sitemap and marked `noindex`; the URL is still publicly accessible.
+The form covers one asset/deployment and preserves the seven intake questions.
+All fields must contain an answer (including `No` or `N/A`) before Markdown export
+or Print / Save as PDF. The print layout includes full answers across page breaks.
+
+Answers stay in the browser: there is no submission endpoint, upload, analytics,
+or external export service. Autosave is always on and writes after a
+500 ms typing pause, field changes, and page hiding. Returning in the same browser
+restores an incomplete draft. Saving and restoration happen silently, with no
+autosave controls. Browser storage failures are surfaced without blocking editing
+or exports.
+Private browsing or clearing site data can remove drafts.
+
+The question/field definitions and versioned draft/Markdown helpers live in
+`src/lib/asset-intake.mjs`; the browser behavior is in `src/scripts/asset-intake.ts`.
+Update the draft version/key if changing the stored field schema. Run
+`npm run build`, then check mobile layout, draft restoration, missing-field
+validation, Markdown downloads, and printing long answers in a browser before
+publishing. Respondents send exported files and any supporting material to their
+yRisk contact on Telegram.
 
 The shared layout supplies an explicit Open Graph and Twitter image for all pages
 using it, including reports and research. `public/yrisk-social.png` is an unchanged

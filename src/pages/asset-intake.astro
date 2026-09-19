@@ -1,0 +1,112 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import {
+  detailFields, intakeQuestions, intakeIntroduction, intakeSupportingMaterial,
+  intakeConfidentiality, intakeTitle,
+} from "../lib/asset-intake.mjs";
+import "../styles/asset-intake.css";
+---
+
+<BaseLayout title="Asset review intake" description="Share your team's perspective for a yRisk asset review." noindex>
+  <div class="intake" data-intake>
+    <div class="intake-screen">
+      <header class="intake-heading">
+        <p class="intake-eyebrow">For prospective partners</p>
+        <h1>Asset review intake</h1>
+        <p class="intake-intro">{intakeIntroduction}</p>
+        <p class="intake-instructions">When finished, please download and share your responses. Work in progress is saved locally in your browser. All fields are required.</p>
+      </header>
+
+      <noscript>
+        <p class="intake-notice">Enable JavaScript to save a draft, download your answers, or prepare a PDF. Answers are processed in your browser.</p>
+      </noscript>
+
+      <!-- A dialog-method form cannot navigate or transmit answers if a script fails. -->
+      <form id="intake-form" method="dialog" novalidate>
+        <p id="draft-status" class="intake-notice" role="status" aria-live="polite" hidden></p>
+
+        <div id="intake-errors" class="intake-errors" role="alert" tabindex="-1" hidden>
+          <p>Please complete these fields before exporting. “No” or “N/A” is fine where appropriate.</p>
+          <ul id="intake-error-list"></ul>
+        </div>
+
+        {(["asset", "contact"] as const).map((group) => (
+          <fieldset class="intake-details">
+            <legend>{group === "asset" ? "Asset details" : "Your details"}</legend>
+            <div class="intake-field-grid">
+              {detailFields.filter((field) => field.group === group).map((field) => (
+                <div class:list={["intake-field", { "intake-field-wide": ["contract-address", "contact"].includes(field.id) }]}>
+                  <label for={field.id}>{field.label}</label>
+                  <input id={field.id} name={field.id} type="text" required autocomplete={field.autocomplete}
+                    spellcheck={field.id === "contract-address" ? "false" : undefined}
+                    autocapitalize={field.id === "contract-address" ? "off" : undefined}
+                    aria-describedby={`${field.id}-error`} />
+                  <p class="intake-field-error" id={`${field.id}-error`} hidden>Complete this field, or enter N/A.</p>
+                </div>
+              ))}
+            </div>
+          </fieldset>
+        ))}
+
+        <section class="intake-questions" aria-labelledby="questions-heading">
+          <div class="intake-section-heading">
+            <h2 id="questions-heading">Your perspective</h2>
+            <p>Include links and as much detail as you need.</p>
+          </div>
+          {intakeQuestions.map((question, index) => (
+            <div class="intake-question">
+              <h3><label for={question.id}><span class="intake-number">{String(index + 1).padStart(2, "0")}</span><span>{question.label}</span></label></h3>
+              <p class="intake-description" id={`${question.id}-description`}>{question.description}</p>
+              <textarea id={question.id} name={question.id} rows="5" required
+                aria-describedby={`${question.id}-description ${question.id}-error`}></textarea>
+              <p class="intake-field-error" id={`${question.id}-error`} hidden>Enter an answer, or N/A if this does not apply.</p>
+            </div>
+          ))}
+        </section>
+
+        <footer class="intake-export">
+          <h2>Download &amp; share</h2>
+          <p class="intake-sharing-note">{intakeSupportingMaterial} {intakeConfidentiality}</p>
+          <div class="intake-actions">
+            <button id="download-markdown" class="intake-button intake-primary" type="button" disabled>Download Markdown <span aria-hidden="true">↓</span></button>
+            <button id="print-intake" class="intake-button" type="button" disabled>Print / Save as PDF</button>
+          </div>
+          <p id="export-status" role="status" aria-live="polite">Downloading does not send your answers to yRisk.</p>
+        </footer>
+      </form>
+    </div>
+
+    <!-- Text nodes, rather than form controls, allow complete answers to paginate. -->
+    <article class="intake-print" data-complete="false" aria-hidden="true">
+      <h1>{intakeTitle}</h1>
+      <p class="intake-print-warning">Please complete every field on the intake page before using Print / Save as PDF.</p>
+      <div class="intake-print-content">
+        <p>{intakeIntroduction}</p>
+        {(["asset", "contact"] as const).map((group) => (
+          <section>
+            <h2>{group === "asset" ? "Asset details" : "Contact details"}</h2>
+            <dl>
+              {detailFields.filter((field) => field.group === group).map((field) => (
+                <div><dt>{field.label}</dt><dd data-print-value={field.id}></dd></div>
+              ))}
+            </dl>
+          </section>
+        ))}
+        {intakeQuestions.map((question, index) => (
+          <section class="intake-print-question">
+            <h2>{index + 1}. {question.label}</h2>
+            <p class="intake-print-description">{question.description}</p>
+            <div class="intake-print-answer" data-print-value={question.id}></div>
+          </section>
+        ))}
+        <div class="intake-print-footer">
+          <p>{intakeSupportingMaterial} {intakeConfidentiality}</p>
+        </div>
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<script>
+  import "../scripts/asset-intake";
+</script>
