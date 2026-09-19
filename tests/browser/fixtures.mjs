@@ -38,9 +38,13 @@ export async function seedDraft(page, values) {
   }, { key: draftKey, raw: typeof values === "string" ? values : serializeDraft(values) });
 }
 
-export async function openForm(page) {
+export async function openForm(page, { pauseClock = false } = {}) {
+  if (pauseClock) await page.clock.install({ time: new Date("2026-09-19T11:00:00Z") });
   await page.goto("/asset-intake/");
   await expect(page.locator("#download-markdown")).toBeEnabled();
+  // Installing a clock still advances real time between runFor calls. Pause
+  // after loading so runner latency cannot cross debounce or feedback deadlines.
+  if (pauseClock) await page.clock.pauseAt(new Date("2026-09-19T12:00:00Z"));
 }
 
 export async function downloadedText(page) {

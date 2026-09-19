@@ -19,8 +19,7 @@ for (const action of ["download-markdown", "copy-responses", "print-intake"]) {
 }
 
 test("autosave debounces typing, flushes on page hiding, and restores the last edit", async ({ page }) => {
-  await page.clock.install();
-  await openForm(page);
+  await openForm(page, { pauseClock: true });
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     window.saveFeedback = [];
@@ -34,12 +33,13 @@ test("autosave debounces typing, flushes on page hiding, and restores the last e
   await expect(page.locator("#backing-save-status")).toBeEmpty();
   expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
   await page.locator("#backing").fill("Latest edit — 日本語");
-  await page.clock.runFor(400);
+  await page.clock.runFor(499);
   await expect(page.locator("#backing-save-status")).toBeEmpty();
   expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
   expect(await page.evaluate(() => window.saveFeedback)).toEqual([]);
-  await page.clock.runFor(101);
+  await page.clock.runFor(1);
   expect(await page.evaluate(() => window.saveFeedback)).toEqual(["Saving…"]);
+  expect(JSON.parse(await page.evaluate((key) => localStorage.getItem(key), draftKey)).values.backing).toBe("Latest edit — 日本語");
   await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
   await expect(page.locator("#draft-status")).toBeHidden();
   await page.locator("#backing").fill("Final edit before leaving");
@@ -163,8 +163,7 @@ for (const outcome of ["granted", "busy", "failed"]) {
         return callback(outcome === "granted" ? {} : null);
       },
     } }), outcome);
-    await page.clock.install();
-    await openForm(page);
+    await openForm(page, { pauseClock: true });
     await page.locator("#backing").fill("Typed while ownership was pending");
     await page.clock.runFor(501);
     expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
@@ -181,8 +180,7 @@ for (const outcome of ["granted", "busy", "failed"]) {
 }
 
 test("returning to a page reacquires draft ownership and saves subsequent edits", async ({ page }) => {
-  await page.clock.install();
-  await openForm(page);
+  await openForm(page, { pauseClock: true });
   await page.locator("#backing").fill("Before leaving");
   await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
   expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("Before leaving");
@@ -194,8 +192,7 @@ test("returning to a page reacquires draft ownership and saves subsequent edits"
 });
 
 test("question save feedback is local, temporary, and cleared on leaving the box", async ({ page }) => {
-  await page.clock.install();
-  await openForm(page);
+  await openForm(page, { pauseClock: true });
   const answer = page.locator("#backing");
   const status = page.locator("#backing-save-status");
   await answer.focus();
@@ -240,8 +237,7 @@ test("question save feedback is local, temporary, and cleared on leaving the box
 
 test("detail edits and restored drafts autosave silently even with a question focused", async ({ page }) => {
   await seedDraft(page, completeValues());
-  await page.clock.install();
-  await openForm(page);
+  await openForm(page, { pauseClock: true });
   await expect(page.locator("#draft-status")).toBeHidden();
   await page.locator("#asset-name").fill("Updated asset");
   await page.clock.runFor(501);
@@ -257,8 +253,7 @@ test("detail edits and restored drafts autosave silently even with a question fo
 });
 
 test("failed saves never show success, errors survive blur, and a later save clears the error", async ({ page }) => {
-  await page.clock.install();
-  await openForm(page);
+  await openForm(page, { pauseClock: true });
   await page.evaluate(() => {
     window.originalSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = () => { throw new DOMException("Full", "QuotaExceededError"); };
