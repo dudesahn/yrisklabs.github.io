@@ -206,16 +206,10 @@ copyButton.addEventListener("click", async () => {
     await navigator.clipboard.writeText(exportMarkdown(values()));
     setStatus(exportStatus, "✓ Copied", "success");
   } catch {
-    setStatus(exportStatus, "Couldn't copy. Download Markdown instead.", "error");
+    setStatus(exportStatus, "Couldn't copy. Download instead.", "error");
   } finally {
     copyButton.disabled = false;
   }
-});
-
-element<HTMLButtonElement>("print-intake").addEventListener("click", () => {
-  if (!validateForExport()) return;
-  syncPrint();
-  window.print();
 });
 
 // Native print shortcuts also use the complete text layout. Incomplete forms
@@ -236,6 +230,6 @@ window.addEventListener("resize", () => {
   resizeFrame = requestAnimationFrame(() => controls.forEach(resize));
 });
 form.addEventListener("submit", (event) => event.preventDefault());
-for (const id of ["download-markdown", "copy-responses", "print-intake"]) {
+for (const id of ["download-markdown", "copy-responses"]) {
   element<HTMLButtonElement>(id).disabled = false;
 }

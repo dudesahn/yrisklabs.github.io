@@ -1,10 +1,9 @@
 import { test, expect, intakeFields, draftKey, completeValues, seedDraft, openForm, downloadedText } from "./fixtures.mjs";
 import { exportMarkdown, serializeDraft } from "../../src/lib/asset-intake.mjs";
 
-for (const action of ["download-markdown", "copy-responses", "print-intake"]) {
+for (const action of ["download-markdown", "copy-responses"]) {
   test(`${action} rejects empty and whitespace-only answers and focuses the error summary`, async ({ page, network }) => {
     await seedDraft(page, completeValues({ backing: " \n\t ", telegram: "" }));
-    await page.addInitScript(() => { window.print = () => { throw new Error("Printing must be blocked"); }; });
     await openForm(page);
     await page.locator(`#${action}`).click();
     await expect(page.locator("#intake-errors")).toBeFocused();
@@ -227,11 +226,7 @@ test("copy and download use identical complete Markdown and dated filenames", as
   await expect(page.locator("#export-status")).toBeEmpty();
   expect(download.filename).toBe(`yrisk-asset-intake-test-asset-${date}.md`);
   expect(date).toBe("2026-09-19");
-  await page.evaluate(() => { window.print = () => { window.printCalled = true; }; });
-  await page.getByRole("button", { name: "Print", exact: true }).click();
-  expect(await page.evaluate(() => window.printCalled)).toBe(true);
-  await expect(page.locator("#export-status")).toBeEmpty();
-  await expect(page.locator(".intake-actions button")).toHaveText(["Download Markdown", "Copy Markdown", "Print"]);
+  await expect(page.locator(".intake-actions button")).toHaveText(["Download .md", "Copy"]);
   expect(network.requests).toEqual([]);
 });
 
@@ -245,7 +240,7 @@ for (const mode of ["missing", "denied"]) {
     }, mode);
     await openForm(page);
     await page.locator("#copy-responses").click();
-    await expect(page.locator("#export-status")).toContainText("Download Markdown instead");
+    await expect(page.locator("#export-status")).toContainText("Download instead");
     await expect(page.locator("#copy-responses")).toBeEnabled();
     expect((await downloadedText(page)).text).toContain("# yRisk Asset Review Intake");
   });
@@ -310,7 +305,7 @@ test("narrow layouts preserve readable fields without horizontal page overflow",
 test("contact accepts either channel and keeps validation and exports consistent", async ({ page }) => {
   await seedDraft(page, completeValues({ email: "", telegram: "" }));
   await openForm(page);
-  await page.getByRole("button", { name: "Download Markdown", exact: true }).click();
+  await page.getByRole("button", { name: "Download .md", exact: true }).click();
   await expect(page.locator("#email-error")).toHaveText("Enter email or Telegram.");
   await expect(page.locator('#intake-error-list a[href="#email"]')).toHaveText("Email or Telegram");
   await page.locator("#email").fill("invalid");
@@ -330,8 +325,8 @@ test("contact accepts either channel and keeps validation and exports consistent
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   await expect(page.locator('[data-print-value="email"]').locator("..")).toHaveAttribute("hidden", "");
   await expect(page.locator('[data-print-value="telegram"]')).toHaveText("@asset_team");
-  await expect(page.getByRole("button", { name: "Print", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy Markdown", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Print", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
 });
 
 test("a legacy contact draft restores into the new fields and saves without losing answers", async ({ page }) => {

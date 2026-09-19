@@ -69,8 +69,8 @@ navigation and sitemap and marked `noindex`; the URL is still publicly accessibl
 The form covers one asset/deployment and preserves the seven intake questions.
 Asset and respondent details and all seven questions require an answer (`No` or
 `N/A` is accepted). Contact requires either Email or Telegram; a supplied email
-must be valid. The footer offers Download Markdown, Copy Markdown, and Print
-(using the browser print dialog) with equal visual weight. Exports include their UTC
+must be valid. The footer offers Download .md and Copy with equal visual weight;
+both produce Markdown. Normal browser printing remains available. Exports include their UTC
 date; downloaded filenames include the asset name and date. The print layout
 includes full answers across page breaks. Clipboard failures offer downloading
 instead. Headings, labels, form controls and printed answers share the site’s SF Mono /

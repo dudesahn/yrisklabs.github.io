@@ -172,7 +172,6 @@ test("a failed retry preserves previously found partial metadata", async ({ page
 test("restored manual answers survive lookups, and contact or narrative text never enters requests", async ({ page, network }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => {} } });
-    window.print = () => window.dispatchEvent(new Event("beforeprint"));
   });
   await seedDraft(page, completeValues({ "contract-address": addressA, backing: "PRIVATE NARRATIVE", telegram: "PRIVATE CONTACT" }));
   await openForm(page);
@@ -184,7 +183,7 @@ test("restored manual answers survive lookups, and contact or narrative text nev
   await page.locator("#backing").fill("PRIVATE NARRATIVE edited");
   await page.locator("#copy-responses").click();
   await expect(page.locator("#export-status")).toContainText("✓ Copied");
-  await page.locator("#print-intake").click();
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   const download = await downloadedText(page);
   expect(download.text).toContain("PRIVATE NARRATIVE");
   expect(download.text).toContain("PRIVATE CONTACT");
