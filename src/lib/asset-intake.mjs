@@ -37,12 +37,12 @@ export const intakeQuestions = [
   {
     id: "liquidity",
     label: "What should we know about liquidity?",
-    description: "Any context on market-maker support, incentives or other arrangements behind the visible pool depth.",
+    description: "Any context on market-maker or programmatic support, incentives or other arrangements behind the onchain pool depth.",
   },
   {
     id: "developments",
     label: "What recent developments should our review reflect?",
-    description: "Recent changes, upcoming plans, or lessons from past issues that the docs haven't caught up with.",
+    description: "Recent releases, upcoming plans, or anything else that hasn't been incorporated into the docs yet.",
   },
   {
     id: "context",
@@ -85,10 +85,16 @@ function markdownText(value) {
   return value.trim().replace(/\r\n?/g, "\n").replace(/[\\`*_{}\[\]<>#!|~]/g, "\\$&");
 }
 
-/** @param {Record<string, string>} values */
-export function exportMarkdown(values) {
+/** A shared UTC date keeps downloaded, copied and printed responses consistent. @param {Date} date */
+export function intakeExportDate(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+/** @param {Record<string, string>} values @param {Date} exportedAt */
+export function exportMarkdown(values, exportedAt = new Date()) {
   if (missingFields(values).length) throw new Error("Complete every field before exporting.");
-  const lines = [`# ${intakeTitle}`, "", intakeIntroduction, "", "## Asset details", ""];
+  const lines = [`# ${intakeTitle}`, "", `Exported (UTC): ${intakeExportDate(exportedAt)}`, "",
+    intakeIntroduction, "", "## Asset details", ""];
   for (const group of ["asset", "contact"]) {
     if (group === "contact") lines.push("## Contact details", "");
     for (const field of detailFields.filter((field) => field.group === group)) {
@@ -96,16 +102,16 @@ export function exportMarkdown(values) {
     }
   }
   intakeQuestions.forEach((question, index) => {
-    lines.push(`## ${index + 1}. ${question.label}`, "", question.description, "",
+    lines.push(`## ${index + 1}. ${question.label}`, "", question.description, "", "**Response:**", "",
       markdownText(values[question.id]), "");
   });
   lines.push("---", "", `${intakeSupportingMaterial} ${intakeConfidentiality}`, "");
   return lines.join("\n");
 }
 
-/** @param {string} assetName */
-export function intakeFilename(assetName) {
+/** @param {string} assetName @param {Date} exportedAt */
+export function intakeFilename(assetName, exportedAt = new Date()) {
   const slug = assetName.normalize("NFKD").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80).replace(/-$/, "");
-  return `yrisk-asset-intake-${slug || "asset"}.md`;
+  return `yrisk-asset-intake-${slug || "asset"}-${intakeExportDate(exportedAt)}.md`;
 }

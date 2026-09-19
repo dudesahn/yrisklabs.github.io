@@ -1,4 +1,5 @@
 .intake {
+  --intake-answer-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   max-width: 780px;
   margin: 0 auto;
   font-family: var(--mono);
@@ -7,19 +8,34 @@
 }
 
 .intake [hidden] { display: none !important; }
-.intake-eyebrow { margin-bottom: 14px; color: var(--secondary); font-size: 12px; }
 .intake-heading h1 { margin-bottom: 20px; font-size: clamp(26px, 4vw, 32px); letter-spacing: -0.045em; }
 .intake-intro { max-width: 78ch; margin-bottom: 14px; }
-.intake-instructions { margin-bottom: 28px; color: var(--secondary); font-size: 12px; }
+.intake-instructions { margin-bottom: 32px; color: var(--secondary); font-size: 12px; }
+.intake-draft-status { margin: 0 0 28px; color: var(--ink); font-size: 12px; }
+.intake-question-save-status { min-height: 1.6em; margin: 6px 0 0; color: var(--secondary); font-size: 12px; text-align: right; }
 .intake-details { min-width: 0; margin: 0 0 36px; padding: 0; border: 0; }
 .intake-details legend, .intake h2 { margin-bottom: 18px; padding: 0; font-size: 16px; font-weight: 500; letter-spacing: -0.025em; }
 .intake-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; }
 .intake-field-wide { grid-column: 1 / -1; }
 .intake-field label { display: block; margin-bottom: 7px; font-size: 12px; }
-.intake-field input, .intake textarea { display: block; width: 100%; padding: 12px 14px; border: 1px solid var(--strong-rule); border-radius: 3px; background: rgb(255 255 255 / 38%); color: var(--ink); font: inherit; font-size: 16px; line-height: 1.6; }
+.intake-field input, .intake-field select, .intake textarea { display: block; width: 100%; padding: 12px 14px; border: 1px solid var(--strong-rule); border-radius: 3px; background: rgb(255 255 255 / 38%); color: var(--ink); font-family: var(--intake-answer-font); font-size: 16px; line-height: 1.5; }
+.intake-field select { max-width: 260px; }
+.intake input[name="contract-address"] { font-family: var(--mono); }
 .intake textarea { min-height: 150px; resize: vertical; overflow-y: hidden; }
-.intake input:focus-visible, .intake textarea:focus-visible, .intake button:focus-visible, .intake-errors:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.intake input[aria-invalid="true"], .intake textarea[aria-invalid="true"] { border: 2px solid var(--ink); }
+.intake input:focus-visible, .intake select:focus-visible, .intake textarea:focus-visible, .intake button:focus-visible, .intake-errors:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.intake input[aria-invalid="true"], .intake select[aria-invalid="true"], .intake textarea[aria-invalid="true"] { border: 2px solid var(--ink); }
+.intake-lookup { margin-top: 12px; font-size: 12px; color: var(--secondary); }
+.intake-token-summary { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; color: var(--ink); }
+.intake-token-summary img { flex: 0 0 32px; width: 32px; height: 32px; object-fit: contain; }
+.intake-token-summary > div { min-width: 0; }
+.intake-token-summary p { margin: 0; overflow-wrap: anywhere; }
+.intake-token-summary a { overflow-wrap: anywhere; }
+.intake-lookup p { margin-bottom: 0; }
+.intake-lookup-actions { display: flex; gap: 16px; }
+.intake-lookup-actions button { margin-top: 8px; padding: 4px 0; border: 0; background: transparent; color: var(--ink); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+#token-lookup-status[data-loading="true"]::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 1px solid var(--rule); border-top-color: var(--secondary); border-radius: 50%; animation: intake-spin 0.8s linear infinite; }
+@keyframes intake-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #token-lookup-status[data-loading="true"]::before { animation: none; } }
 .intake-field-error { margin: 7px 0 0; font-weight: 600; }
 .intake-errors, .intake-notice { margin: 0 0 30px; padding: 18px; border: 1px solid var(--ink); }
 .intake-errors p { margin-bottom: 8px; }
@@ -27,7 +43,7 @@
 .intake-section-heading { padding-top: 28px; border-top: 1px solid var(--strong-rule); }
 .intake-section-heading h2 { margin-bottom: 4px; }
 .intake-section-heading > p { margin-bottom: 30px; color: var(--secondary); }
-.intake-question { padding: 0 0 32px; margin-bottom: 28px; border-bottom: 1px solid var(--rule); }
+.intake-question { padding: 0 0 12px; margin-bottom: 28px; border-bottom: 1px solid var(--rule); }
 .intake-question h3 { margin-bottom: 10px; font-size: 16px; line-height: 1.5; font-weight: 600; }
 .intake-question h3 label { display: flex; align-items: baseline; gap: 14px; cursor: pointer; }
 .intake-number { color: var(--secondary); font-size: 12px; font-weight: 400; flex: 0 0 auto; }
@@ -67,6 +83,9 @@
   .intake-print dt { font-size: 9pt; color: #555; }
   .intake-print dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .intake-print-description { color: #444; break-inside: avoid; }
+  .intake-print-date { color: #555; font-size: 9pt; }
+  .intake-print dd, .intake-print-answer { font-family: var(--intake-answer-font); }
+  .intake-print [data-print-value="contract-address"] { font-family: var(--mono); }
   .intake-print-answer { overflow-wrap: anywhere; }
   .intake-print-answer p { white-space: pre-wrap; break-inside: avoid; orphans: 3; widows: 3; }
   .intake-print-footer { margin-top: 24pt; padding-top: 10pt; border-top: 1px solid #bbb; color: #555; font-size: 9pt; }

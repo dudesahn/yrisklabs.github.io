@@ -1,7 +1,10 @@
 import {
   draftKey, intakeFields, missingFields, parseDraft,
-  serializeDraft, exportMarkdown, intakeFilename,
+  serializeDraft, exportMarkdown, intakeFilename, intakeExportDate,
 } from "../lib/asset-intake.mjs";
+import { intakeNetwork } from "../lib/token-lookup.mjs";
+import { setupAssetLookup } from "./asset-lookup";
+type IntakeControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -12,25 +15,47 @@ function element<T extends HTMLElement>(id: string): T {
 const form = element<HTMLFormElement>("intake-form");
 const draftStatus = element("draft-status");
 const exportStatus = element("export-status");
+const copyButton = element<HTMLButtonElement>("copy-responses");
 const errorSummary = element("intake-errors");
 const errorList = element("intake-error-list");
-const controls = new Map(intakeFields.map(({ id }) => [id, element<HTMLInputElement | HTMLTextAreaElement>(id)]));
+const controls = new Map(intakeFields.map(({ id }) => [id, element<IntakeControl>(id)]));
 const printDocument = document.querySelector<HTMLElement>(".intake-print")!;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let savedMessageTimer: ReturnType<typeof setTimeout> | undefined;
+let statusQuestion: HTMLTextAreaElement | undefined;
+let questionAwaitingSave = false;
 let dirty = false;
 let validationStarted = false;
 let lastMissing = "";
 
-function status(message = "") {
-  draftStatus.hidden = !message;
+function draftError(message = "") {
   if (draftStatus.textContent !== message) draftStatus.textContent = message;
+  draftStatus.hidden = !message;
+}
+
+function clearQuestionStatus() {
+  clearTimeout(savedMessageTimer);
+  if (statusQuestion) element(`${statusQuestion.id}-save-status`).textContent = "";
+  statusQuestion = undefined;
+  questionAwaitingSave = false;
+}
+
+function queueQuestionStatus(control?: IntakeControl) {
+  if (!(control instanceof HTMLTextAreaElement) || document.activeElement !== control) return;
+  // Keep the box quiet while typing, including when a new edit follows a save.
+  if (statusQuestion !== control) clearQuestionStatus();
+  clearTimeout(savedMessageTimer);
+  statusQuestion = control;
+  questionAwaitingSave = true;
+  const target = element(`${control.id}-save-status`);
+  if (target.textContent) target.textContent = "";
 }
 
 function values(): Record<string, string> {
   return Object.fromEntries([...controls].map(([id, control]) => [id, control.value]));
 }
 
-function resize(control: HTMLInputElement | HTMLTextAreaElement) {
+function resize(control: IntakeControl) {
   if (control instanceof HTMLTextAreaElement) {
     control.style.height = "auto";
     const border = control.offsetHeight - control.clientHeight;
@@ -41,12 +66,23 @@ function resize(control: HTMLInputElement | HTMLTextAreaElement) {
 function saveDraft() {
   clearTimeout(saveTimer);
   if (!dirty) return;
+  // The typing debounce has elapsed (or an explicit flush was requested).
+  // Local storage writes synchronously, so success can be shown immediately.
+  const questionStatus = questionAwaitingSave && statusQuestion && statusQuestion === document.activeElement
+    ? element(`${statusQuestion.id}-save-status`) : undefined;
+  if (questionStatus) questionStatus.textContent = "Saving…";
   try {
     localStorage.setItem(draftKey, serializeDraft(values()));
     dirty = false;
-    status();
+    draftError();
+    if (questionStatus) {
+      questionStatus.textContent = "Saved in this browser.";
+      questionAwaitingSave = false;
+      savedMessageTimer = setTimeout(clearQuestionStatus, 2000);
+    }
   } catch {
-    status("Your browser could not save this draft. Keep this page open until you download your answers.");
+    clearQuestionStatus();
+    draftError("Your browser could not save this draft. Keep this page open until you copy or download your answers.");
   }
 }
 
@@ -89,6 +125,7 @@ function validateForExport() {
 
 function syncPrint() {
   const current = values();
+  element("print-export-date").textContent = intakeExportDate();
   printDocument.dataset.complete = String(missingFields(current).length === 0);
   printDocument.querySelectorAll<HTMLElement>("[data-print-value]").forEach((target) => {
     const answer = current[target.dataset.printValue!] ?? "";
@@ -112,41 +149,83 @@ try {
   if (saved) {
     try {
       const restored = parseDraft(saved);
-      for (const [id, control] of controls) control.value = restored[id];
+      for (const [id, control] of controls) {
+        let value = restored[id];
+        if (control instanceof HTMLSelectElement) {
+          value = intakeNetwork(value)?.name ?? value;
+          // Preserve older drafts, including networks outside the lookup list.
+          if (![...control.options].some((option) => option.value === value)) {
+            control.add(new Option(value || "Select a network", value));
+          }
+        }
+        control.value = value;
+      }
     } catch {
-      status("The saved draft could not be restored. New edits will replace it.");
+      draftError("The saved draft could not be restored. New edits will replace it.");
     }
   }
 } catch {
-  status("Browser storage is unavailable. Keep this page open until you download your answers.");
+  draftError("Browser storage is unavailable. Keep this page open until you copy or download your answers.");
+}
+
+function markDirty(control?: IntakeControl) {
+  dirty = true;
+  queueQuestionStatus(control);
+  if (validationStarted) showErrors();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDraft, 500);
 }
 
 for (const control of controls.values()) {
   resize(control);
   control.addEventListener("input", () => {
-    dirty = true;
     resize(control);
-    if (validationStarted) showErrors();
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveDraft, 500);
+    markDirty(control);
   });
   // Also captures browser autofill and saves when leaving a field.
-  control.addEventListener("change", () => { dirty = true; resize(control); saveDraft(); });
+  control.addEventListener("change", () => { resize(control); markDirty(control); saveDraft(); });
+  if (control instanceof HTMLTextAreaElement) {
+    control.addEventListener("blur", () => {
+      if (statusQuestion === control) clearQuestionStatus();
+    });
+  }
 }
+
+setupAssetLookup({
+  chain: element<HTMLSelectElement>("chain"),
+  address: element<HTMLInputElement>("contract-address"),
+  name: element<HTMLInputElement>("asset-name"),
+  symbol: element<HTMLInputElement>("asset-symbol"),
+  onUpdate: markDirty,
+});
 
 element<HTMLButtonElement>("download-markdown").addEventListener("click", () => {
   if (!validateForExport()) return;
   const current = values();
-  const file = new Blob([exportMarkdown(current)], { type: "text/markdown;charset=utf-8" });
+  const exportedAt = new Date();
+  const file = new Blob([exportMarkdown(current, exportedAt)], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(file);
   const link = document.createElement("a");
   link.href = url;
-  link.download = intakeFilename(current["asset-name"]);
+  link.download = intakeFilename(current["asset-name"], exportedAt);
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  exportStatus.textContent = "Markdown download started. Send the file to your yRisk contact on Telegram.";
+  exportStatus.textContent = "Download started (.md). Send the file to your yRisk contact on Telegram.";
+});
+
+copyButton.addEventListener("click", async () => {
+  if (!validateForExport()) return;
+  copyButton.disabled = true;
+  try {
+    await navigator.clipboard.writeText(exportMarkdown(values()));
+    exportStatus.textContent = "Responses copied. Paste them into a message to your yRisk contact on Telegram.";
+  } catch {
+    exportStatus.textContent = "Your browser could not copy the responses. Please download them instead.";
+  } finally {
+    copyButton.disabled = false;
+  }
 });
 
 element<HTMLButtonElement>("print-intake").addEventListener("click", () => {
@@ -164,9 +243,10 @@ window.addEventListener("beforeprint", () => {
   printDocument.removeAttribute("aria-hidden");
 });
 window.addEventListener("afterprint", () => printDocument.setAttribute("aria-hidden", "true"));
-window.addEventListener("pagehide", saveDraft);
+window.addEventListener("blur", clearQuestionStatus);
+window.addEventListener("pagehide", () => { clearQuestionStatus(); saveDraft(); });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveDraft();
+  if (document.visibilityState === "hidden") { clearQuestionStatus(); saveDraft(); }
 });
 let resizeFrame = 0;
 window.addEventListener("resize", () => {
@@ -174,6 +254,6 @@ window.addEventListener("resize", () => {
   resizeFrame = requestAnimationFrame(() => controls.forEach(resize));
 });
 form.addEventListener("submit", (event) => event.preventDefault());
-for (const id of ["download-markdown", "print-intake"]) {
+for (const id of ["download-markdown", "copy-responses", "print-intake"]) {
   element<HTMLButtonElement>(id).disabled = false;
 }
