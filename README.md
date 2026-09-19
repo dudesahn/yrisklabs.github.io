@@ -17,7 +17,7 @@ TypeScript, and all content-collection schemas before producing `dist/`.
 
 ## Publish
 
-Push `main` and the included workflow builds and deploys the site. GitHub Pages
+Push `main` and the included workflow builds, tests, and deploys the site. GitHub Pages
 uses Actions, serves `yrisklabs.com`, and enforces HTTPS.
 
 ## Content
@@ -144,8 +144,11 @@ print output, narrow layouts, all four networks, cancellation and late results,
 manual edits, partial/failed retries, missing logos, and untrusted metadata. PR
 checks (including fork PRs) and pushes to `main` run the full suite with read-only
 repository permissions. Failed browser checks retain screenshots and traces for
-seven days. This workflow does not deploy the site. Export comparison tests use
-a fixed clock; UTC date-boundary behavior is checked separately.
+seven days. This test workflow does not deploy the site. The separate Pages
+workflow also runs browser tests after its Astro build; deployment waits for those
+tests to pass. Pushes to `main` therefore run browser tests in both workflows.
+Export comparison tests use a fixed clock; UTC date-boundary behavior is checked
+separately.
 
 Browser tests verify print content and generate a long-answer PDF in Chromium;
 visual pagination and the native Save as PDF dialog still need a manual check
