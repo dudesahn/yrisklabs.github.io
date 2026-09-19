@@ -67,20 +67,27 @@ small Astro components.
 Share `/asset-intake/` directly with prospective partners. It is omitted from the
 navigation and sitemap and marked `noindex`; the URL is still publicly accessible.
 The form covers one asset/deployment and preserves the seven intake questions.
-All fields must contain an answer (including `No` or `N/A`) before downloading or
-copying Markdown responses, or using Print / Save as PDF. Exports include their UTC
+Asset and respondent details and all seven questions require an answer (`No` or
+`N/A` is accepted). Contact requires either Email or Telegram; a supplied email
+must be valid. The footer offers Download Markdown, Copy Markdown, and Print
+(using the browser print dialog) with equal visual weight. Exports include their UTC
 date; downloaded filenames include the asset name and date. The print layout
 includes full answers across page breaks. Clipboard failures offer downloading
-instead. Headings and labels use monospace; answers use system sans-serif, except
-contract addresses, which remain monospace.
+instead. Headings, labels, form controls and printed answers share the site’s SF Mono /
+monospace font stack.
 
 Token lookup supports Ethereum (1), Arbitrum (42161), Optimism (10), and Fraxtal
-(252). Choose a chain and paste a token address, or paste a link from Etherscan,
+(252), with Ethereum selected for a fresh form. Paste a token address, or a link from Etherscan,
 Arbiscan, Optimistic Etherscan, or Fraxscan to select the chain automatically.
+Complete addresses normalize to EIP-55 checksum casing in the form, drafts and
+exports. Casing changes do not repeat the lookup. Keccak comes from the small
+`@noble/hashes` dependency; there is no outbound explorer link.
 The browser reads ERC-20 `name()` and `symbol()` through each chain's public
 PublicNode RPC. These services receive the token address, not contact details or
 narrative answers. Requests time out after five seconds; unavailable metadata can
-be entered manually. Changing the address or chain clears the previous token's
+be entered manually. Name and symbol appear after a lookup finishes, on manual
+entry, or when restoring existing values. Successful lookups fill the fields
+without repeating their contents in a separate summary. Changing the address or chain clears the previous token's
 name and symbol and fills the new token's details, including after restoring a
 draft. Contact and narrative answers are preserved. Initial draft restoration,
 same-token retries, and edits made while a lookup is loading preserve entered
@@ -89,27 +96,25 @@ including previously typed chain names, still restore.
 
 Logos come only from CoinGecko's public per-chain token lists and image hosts.
 Lists are cached for the current page; missing or failed logos are simply omitted.
-No API keys, wallet connection, backend, or additional lookup dependencies are
-required. RPC responses and logos are informational and should be reviewed by
+No API keys, wallet connection, or backend is required. RPC responses and logos are informational and should be reviewed by
 the respondent. The lookup code is in `src/lib/token-lookup.mjs` and
 `src/scripts/asset-lookup.ts`.
 
 Answers stay in the browser: there is no submission endpoint, upload, analytics,
 or external export service. Autosave is always on and writes after a
 500 ms typing pause, field changes, and page hiding. Returning in the same browser
-restores an incomplete draft. Narrative answer boxes stay quiet while typing.
-After the typing pause, a small status below the active box shows “Saving…” during
-the local write, then “Progress saved.” for two seconds. It clears on the
-next edit or on leaving the box. Detail fields and restored drafts save
-silently; storage errors stay visible at the top until saving succeeds.
-There are no autosave controls. Existing drafts remain compatible.
-Only one open intake tab owns autosave in browsers with Web Locks. The page also
-checks that the saved draft still matches the version it loaded before writing.
-If another tab owns or changes the draft, autosave pauses with recovery guidance;
-this tab's answers stay visible and exportable. Copy any unsaved changes, close
-other intake tabs, and reload to continue from the saved draft. Ownership releases
-when leaving the page (`pagehide`) and is reacquired on return. Browsers without Web Locks
-retain the snapshot check, but cannot serialize simultaneous writes across tabs.
+restores an incomplete draft. One status below the title shows “✓ Saved locally”
+after a successful write and clears on editing. Restored drafts show “Draft restored”.
+Storage errors stay visible at the top until saving succeeds. Success feedback
+uses muted green, recoverable warnings use amber, and validation or action failures
+use muted red. Field errors use regular-weight text and a single thin border.
+Ordinary controls and backgrounds stay neutral; focus remains blue.
+There are no autosave controls. Draft format v2 splits contact into email and
+Telegram. V1 email contacts migrate to Email; other free text is preserved verbatim
+in Telegram for editing. The storage key stays stable for existing drafts.
+Autosave is best-effort: the last edited tab to save supplies the restored draft.
+There are no tab locks, conflict notices, or version-selection controls. An idle tab
+never rewrites storage; each tab keeps its current answers until edited or reloaded.
 Browser storage failures are surfaced without blocking editing
 or exports.
 Private browsing or clearing site data can remove drafts.

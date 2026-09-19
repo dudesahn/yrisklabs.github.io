@@ -1,20 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  intakeFields, intakeQuestions, missingFields, parseDraft, serializeDraft,
+  intakeFields, intakeQuestions, invalidFields, parseDraft, serializeDraft,
   exportMarkdown, intakeFilename, intakeExportDate,
 } from "../src/lib/asset-intake.mjs";
 
-const completed = () => Object.fromEntries(intakeFields.map(({ id }) => [id, "N/A"]));
+const completed = () => ({ ...Object.fromEntries(intakeFields.map(({ id }) => [id, "N/A"])), email: "", telegram: "@asset_team" });
 
 test("exports require every detail and narrative, rejecting whitespace but accepting No and N/A", () => {
-  assert.equal(missingFields({}).length, 14);
-  for (const { id } of intakeFields) {
+  assert.equal(invalidFields({}).length, 14);
+  for (const { id } of intakeFields.filter(({ id }) => !["email", "telegram"].includes(id))) {
     const values = { ...completed(), [id]: " \n\t " };
-    assert.deepEqual(missingFields(values).map((field) => field.id), [id]);
-    assert.throws(() => exportMarkdown(values), /Complete every field/);
+    assert.deepEqual(invalidFields(values).map((field) => field.id), [id]);
+    assert.throws(() => exportMarkdown(values), /required fields/);
   }
-  assert.deepEqual(missingFields({ ...completed(), access: "No" }), []);
+  assert.deepEqual(invalidFields({ ...completed(), access: "No" }), []);
 });
 
 test("incomplete drafts round-trip Unicode, line breaks and full long answers without requiring completion", () => {
@@ -23,11 +23,11 @@ test("incomplete drafts round-trip Unicode, line breaks and full long answers wi
 });
 
 test("draft restoration rejects malformed data and ignores unknown properties", () => {
-  for (const raw of ["broken", "null", "[]", "{}", JSON.stringify({ version: 2, values: completed() }),
-    JSON.stringify({ version: 1, values: { ...completed(), access: {} } })]) {
+  for (const raw of ["broken", "null", "[]", "{}", JSON.stringify({ version: 3, values: completed() }),
+    JSON.stringify({ version: 2, values: { ...completed(), access: {} } })]) {
     assert.throws(() => parseDraft(raw));
   }
-  const raw = JSON.stringify({ version: 1, values: { ...completed(), unexpected: "ignored" } });
+  const raw = JSON.stringify({ version: 2, values: { ...completed(), unexpected: "ignored" } });
   assert.deepEqual(parseDraft(raw), completed());
 });
 
@@ -77,14 +77,14 @@ test("exports separate each prompt from its answer and preserve ordinary links a
 test("draft validation rejects missing, null, numeric, and array-valued fields individually", () => {
   for (const { id } of intakeFields) {
     for (const invalid of [undefined, null, 1, false, [], {}]) {
-      assert.throws(() => parseDraft(JSON.stringify({ version: 1, values: { ...completed(), [id]: invalid } })));
+      assert.throws(() => parseDraft(JSON.stringify({ version: 2, values: { ...completed(), [id]: invalid } })));
     }
   }
 });
 
 test("drafts whitelist known fields and normalize an initially empty form", () => {
   assert.deepEqual(parseDraft(serializeDraft({})), Object.fromEntries(intakeFields.map(({ id }) => [id, ""])));
-  const data = JSON.parse('{"version":1,"values":{"__proto__":{"injected":true}}}');
+  const data = JSON.parse('{"version":2,"values":{"__proto__":{"injected":true}}}');
   Object.assign(data.values, completed());
   const parsed = parseDraft(JSON.stringify(data));
   assert.equal(Object.hasOwn(parsed, "__proto__"), false);
@@ -98,4 +98,29 @@ test("exports normalize Windows line endings without losing Unicode or breaking 
   assert.ok(!result.includes("\r"));
   assert.ok(result.includes("Réserves 日本語\n\n\\[link\\](javascript:alert(1))"));
   assert.ok(result.includes("\\\\\\<script\\>"));
+});
+
+test("either email or Telegram is sufficient, but supplied email must be valid", () => {
+  for (const contact of [{ email: "team@example.org", telegram: "" }, { email: "", telegram: "@asset_team" },
+    { email: "team@example.org", telegram: "@asset_team" }]) {
+    assert.deepEqual(invalidFields({ ...completed(), ...contact }), []);
+  }
+  for (const contact of [{ email: "", telegram: " " }, { email: "bad email", telegram: "@asset_team" }]) {
+    assert.deepEqual(invalidFields({ ...completed(), ...contact }).map(({ id }) => id), ["email"]);
+    assert.throws(() => exportMarkdown({ ...completed(), ...contact }), /required fields/);
+  }
+  const markdown = exportMarkdown({ ...completed(), email: "team@example.org", telegram: "" });
+  assert.ok(markdown.includes("**Email:** team@example.org"));
+  assert.ok(!markdown.includes("**Telegram:**"));
+});
+
+test("legacy contact drafts preserve every answer and migrate without dropping free text", () => {
+  for (const contact of ["team@example.org", "@asset_team", "Contact Alice via the team chat", ""]) {
+    const { email, telegram, ...values } = completed();
+    const restored = parseDraft(JSON.stringify({ version: 1, values: { ...values, contact } }));
+    assert.equal(restored.email || restored.telegram, contact);
+    assert.equal(restored.email, contact === "team@example.org" ? contact : "");
+    for (const [id, value] of Object.entries(values)) assert.equal(restored[id], value);
+    assert.deepEqual(parseDraft(serializeDraft(restored)), restored);
+  }
 });

@@ -6,6 +6,9 @@
   --rule: #d5d3cb;
   --strong-rule: #aaa89f;
   --accent: #0657f9;
+  --success: #356447;
+  --warning: #805d20;
+  --error: #a23f3b;
   --mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --width: 109ch;
   --gutter: clamp(18px, 4vw, 42px);

@@ -3,13 +3,17 @@ import { test, expect, intakeNetworks, draftKey, addressA, addressB, logoA, logo
 for (const chain of intakeNetworks) {
   test(`${chain.name}: explorer paste selects the chain, fills details, and normalizes repeated pastes`, async ({ page, network }) => {
     await openForm(page);
+    await expect(page.locator("#chain")).toHaveValue("Ethereum");
+    await expect(page.locator("#asset-metadata")).toBeHidden();
     await page.locator("#contract-address").fill(`https://${chain.explorer}/token/${addressA}?source=review#code`);
     await expect(page.locator("#chain")).toHaveValue(chain.name);
     await expect(page.locator("#contract-address")).toHaveValue(addressA);
     await expect(page.locator("#asset-name")).toHaveValue(`Example ${chain.name}`);
     await expect(page.locator("#asset-symbol")).toHaveValue(`T${chain.id}`);
+    await expect(page.locator("#asset-metadata")).toBeVisible();
+    await expect(page.locator("#token-lookup-status")).toHaveClass("intake-sr-only");
+    await expect(page.locator("#token-summary")).toHaveCount(0);
     await expect(page.locator("#token-logo")).toBeVisible();
-    await expect(page.locator("#token-explorer")).toHaveAttribute("href", `https://${chain.explorer}/token/${addressA}`);
     const count = network.requests.length;
     await page.clock.install();
     await page.locator("#contract-address").fill(`https://${chain.explorer}/address/${addressA}`);
@@ -37,9 +41,9 @@ test("pasting a new address replaces restored token details and saves the replac
     if (args.data.params[0].to === addressB) await pending.promise;
     return normalRpc(args);
   };
-  await seedDraft(page, completeValues({ "contract-address": addressA, "asset-name": "Old saved name", "asset-symbol": "OLD", backing: "Keep this narrative", contact: "Keep this contact" }));
+  await seedDraft(page, completeValues({ "contract-address": addressA, "asset-name": "Old saved name", "asset-symbol": "OLD", backing: "Keep this narrative", telegram: "Keep this contact" }));
   await openForm(page);
-  await expect(page.locator("#token-lookup-status")).toContainText("Token details found");
+  await expect(page.locator("#token-lookup-status")).toContainText("Asset details loaded.");
   await expect(page.locator("#asset-name")).toHaveValue("Old saved name");
   await page.locator("#contract-address").fill(addressB);
   await expect(page.locator("#asset-name")).toHaveValue("");
@@ -49,7 +53,7 @@ test("pasting a new address replaces restored token details and saves the replac
   await expect(page.locator("#asset-symbol")).toHaveValue("S1");
   await expect(page.locator("#apply-token-details")).toBeHidden();
   await expect(page.locator("#backing")).toHaveValue("Keep this narrative");
-  await expect(page.locator("#contact")).toHaveValue("Keep this contact");
+  await expect(page.locator("#telegram")).toHaveValue("Keep this contact");
   await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values["asset-symbol"], draftKey)).toBe("S1");
   await page.reload();
   await expect(page.locator("#asset-name")).toHaveValue("Second Ethereum");
@@ -75,7 +79,8 @@ test("a failed lookup for a new address cannot export the previous token's metad
   await seedDraft(page, completeValues({ "contract-address": addressA }));
   await openForm(page);
   await page.locator("#contract-address").fill(addressB);
-  await expect(page.locator("#token-lookup-status")).toContainText("could not be loaded");
+  await expect(page.locator("#token-lookup-status")).toContainText("Couldn't load details");
+  await expect(page.locator("#token-lookup-status")).toHaveAttribute("data-tone", "warning");
   await expect(page.locator("#asset-name")).toHaveValue("");
   await expect(page.locator("#asset-symbol")).toHaveValue("");
   await page.locator("#download-markdown").click();
@@ -85,6 +90,7 @@ test("a failed lookup for a new address cannot export the previous token's metad
 
 test("manual N/A address entry preserves manually entered asset details", async ({ page, network }) => {
   await openForm(page);
+  await page.locator("#enter-token-manually").click();
   await page.locator("#asset-name").fill("Manual asset");
   await page.locator("#asset-symbol").fill("MAN");
   await page.locator("#contract-address").fill("N/A");
@@ -126,7 +132,6 @@ test("late RPC responses and logos cannot replace a newer asset", async ({ page,
   await page.waitForLoadState("networkidle");
   await expect(page.locator("#asset-name")).toHaveValue("Second Ethereum");
   await expect(page.locator("#token-logo")).toHaveAttribute("src", logoB);
-  await expect(page.locator("#token-explorer")).toHaveAttribute("href", `https://etherscan.io/token/${addressB}`);
 });
 
 test("manual edits and deliberately emptied fields survive pending lookups", async ({ page, network }) => {
@@ -136,11 +141,13 @@ test("manual edits and deliberately emptied fields survive pending lookups", asy
   await openForm(page);
   await page.locator("#contract-address").fill(addressA);
   await expect.poll(() => network.requests.filter(({ body }) => body).length).toBe(2);
+  await expect(page.locator("#asset-metadata")).toBeHidden();
+  await page.locator("#enter-token-manually").click();
   await page.locator("#asset-name").fill("My reviewed name");
   await page.locator("#asset-symbol").fill("Temporary");
   await page.locator("#asset-symbol").fill("");
   pending.release();
-  await expect(page.locator("#token-lookup-status")).toContainText("Token details found");
+  await expect(page.locator("#token-lookup-status")).toContainText("Asset details loaded.");
   await expect(page.locator("#asset-name")).toHaveValue("My reviewed name");
   await expect(page.locator("#asset-symbol")).toHaveValue("");
   await page.locator("#apply-token-details").click();
@@ -157,7 +164,8 @@ test("a failed retry preserves previously found partial metadata", async ({ page
   await expect(page.locator("#retry-token-lookup")).toBeVisible();
   network.rpc = async () => ({ status: 503, body: "Unavailable" });
   await page.locator("#retry-token-lookup").click();
-  await expect(page.locator("#token-lookup-status")).toContainText("could not be loaded");
+  await expect(page.locator("#token-lookup-status")).toContainText("Couldn't load details");
+  await expect(page.locator("#token-lookup-status")).toHaveAttribute("data-tone", "warning");
   await expect(page.locator("#asset-name")).toHaveValue("Example Ethereum");
 });
 
@@ -166,16 +174,16 @@ test("restored manual answers survive lookups, and contact or narrative text nev
     Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => {} } });
     window.print = () => window.dispatchEvent(new Event("beforeprint"));
   });
-  await seedDraft(page, completeValues({ "contract-address": addressA, backing: "PRIVATE NARRATIVE", contact: "PRIVATE CONTACT" }));
+  await seedDraft(page, completeValues({ "contract-address": addressA, backing: "PRIVATE NARRATIVE", telegram: "PRIVATE CONTACT" }));
   await openForm(page);
-  await expect(page.locator("#token-lookup-status")).toContainText("Token details found");
+  await expect(page.locator("#token-lookup-status")).toContainText("Asset details loaded.");
   await expect(page.locator("#asset-name")).toHaveValue("Manual Asset");
   await expect(page.locator("#asset-symbol")).toHaveValue("MAN");
   await expect(page.locator("#backing")).toHaveValue("PRIVATE NARRATIVE");
-  await page.locator("#contact").fill("PRIVATE CONTACT edited");
+  await page.locator("#telegram").fill("PRIVATE CONTACT edited");
   await page.locator("#backing").fill("PRIVATE NARRATIVE edited");
   await page.locator("#copy-responses").click();
-  await expect(page.locator("#export-status")).toContainText("Responses copied");
+  await expect(page.locator("#export-status")).toContainText("✓ Copied");
   await page.locator("#print-intake").click();
   const download = await downloadedText(page);
   expect(download.text).toContain("PRIVATE NARRATIVE");
@@ -192,7 +200,8 @@ test("lookup timeout clears the spinner and leaves manual exports available", as
   await page.clock.runFor(351);
   await expect(page.locator("#token-lookup-status")).toHaveAttribute("data-loading", "true");
   await page.clock.runFor(5001);
-  await expect(page.locator("#token-lookup-status")).toContainText("could not be loaded");
+  await expect(page.locator("#token-lookup-status")).toContainText("Couldn't load details");
+  await expect(page.locator("#token-lookup-status")).toHaveAttribute("data-tone", "warning");
   await expect(page.locator("#token-lookup-status")).toHaveAttribute("data-loading", "false");
   pending.release();
   expect((await downloadedText(page)).text).toContain("**Asset name:** Manual Asset");
@@ -221,7 +230,7 @@ test("clearing an address drops old metadata and a change-only explorer paste tr
   await page.locator("#contract-address").fill("");
   await expect(page.locator("#asset-name")).toHaveValue("");
   await expect(page.locator("#asset-symbol")).toHaveValue("");
-  await expect(page.locator("#token-summary")).toBeHidden();
+  await expect(page.locator("#asset-metadata")).toBeHidden();
   await page.locator("#contract-address").evaluate((control, address) => {
     control.value = `https://fraxscan.com/token/${address}`;
     control.dispatchEvent(new Event("change", { bubbles: true }));
@@ -237,7 +246,45 @@ test("untrusted token text stays literal in the page and export", async ({ page,
   await seedDraft(page, completeValues({ "asset-name": "", "asset-symbol": "", "contract-address": addressA }));
   await openForm(page);
   await expect(page.locator("#asset-name")).toHaveValue(text);
-  await expect(page.locator("#token-summary-title img")).toHaveCount(0);
+  await expect(page.locator("#asset-metadata script")).toHaveCount(0);
   expect(await page.evaluate(() => window.injected)).toBeUndefined();
   expect((await downloadedText(page)).text).toContain('\\<img src=x onerror="window.injected=true"\\>');
+});
+
+test("export validation reveals missing metadata and keyboard links focus it", async ({ page }) => {
+  await openForm(page);
+  await expect(page.locator("#asset-metadata")).toBeHidden();
+  await page.locator("#download-markdown").click();
+  await expect(page.locator("#asset-metadata")).toBeVisible();
+  await page.locator('#intake-error-list a[href="#asset-name"]').click();
+  await expect(page.locator("#asset-name")).toBeFocused();
+});
+
+test("invalid input waits until blur and allows manual entry without a request", async ({ page, network }) => {
+  await openForm(page);
+  await page.locator("#contract-address").fill("0x123");
+  await expect(page.locator("#token-lookup-status")).toBeEmpty();
+  await page.locator("#telegram").focus();
+  await expect(page.locator("#token-lookup-status")).toHaveText("Enter a full address or supported explorer link.");
+  await page.locator("#enter-token-manually").click();
+  await expect(page.locator("#asset-name")).toBeFocused();
+  await expect(page.locator("#token-lookup-status")).toBeEmpty();
+  expect(network.requests).toEqual([]);
+});
+
+test("checksum casing persists to drafts and exports without repeating a lookup", async ({ page, network }) => {
+  const checksummed = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  await seedDraft(page, completeValues({ "contract-address": checksummed.toLowerCase() }));
+  await openForm(page);
+  await expect(page.locator("#contract-address")).toHaveValue(checksummed);
+  await expect(page.locator("#token-lookup-status")).toHaveText("Asset details loaded.");
+  await expect(page.locator("#token-explorer")).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  const requests = network.requests.length;
+  await page.locator("#contract-address").fill(`https://etherscan.io/token/${checksummed.toUpperCase()}`);
+  await expect(page.locator("#contract-address")).toHaveValue(checksummed);
+  expect((await downloadedText(page)).text).toContain(`**Contract address:** ${checksummed}`);
+  expect(network.requests).toHaveLength(requests);
+  await page.reload();
+  await expect(page.locator("#contract-address")).toHaveValue(checksummed);
 });

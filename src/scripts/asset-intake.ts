@@ -1,5 +1,5 @@
 import {
-  draftKey, intakeFields, missingFields, parseDraft,
+  draftKey, intakeFields, invalidFields, parseDraft,
   serializeDraft, exportMarkdown, intakeFilename, intakeExportDate,
 } from "../lib/asset-intake.mjs";
 import { intakeNetwork } from "../lib/token-lookup.mjs";
@@ -14,6 +14,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 const form = element<HTMLFormElement>("intake-form");
 const draftStatus = element("draft-status");
+const saveStatus = element("save-status");
 const exportStatus = element("export-status");
 const copyButton = element<HTMLButtonElement>("copy-responses");
 const errorSummary = element("intake-errors");
@@ -21,40 +22,19 @@ const errorList = element("intake-error-list");
 const controls = new Map(intakeFields.map(({ id }) => [id, element<IntakeControl>(id)]));
 const printDocument = document.querySelector<HTMLElement>(".intake-print")!;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-let savedMessageTimer: ReturnType<typeof setTimeout> | undefined;
-let statusQuestion: HTMLTextAreaElement | undefined;
-let questionAwaitingSave = false;
 let dirty = false;
 let validationStarted = false;
 let lastMissing = "";
-let lastSavedDraft: string | null | undefined;
-let draftConflict = false;
-let releaseDraftLock: (() => void) | undefined;
-let claimingDraftLock = false;
-let draftLockFailed = false;
-let pageActive = true;
 
-function draftError(message = "") {
-  if (draftStatus.textContent !== message) draftStatus.textContent = message;
+function setStatus(target: HTMLElement, message: string, tone = "neutral") {
+  if (target.textContent !== message) target.textContent = message;
+  target.dataset.tone = tone;
+}
+
+function draftError(message = "", tone = "error") {
+  setStatus(draftStatus, message, tone);
   draftStatus.hidden = !message;
-}
-
-function clearQuestionStatus() {
-  clearTimeout(savedMessageTimer);
-  if (statusQuestion) element(`${statusQuestion.id}-save-status`).textContent = "";
-  statusQuestion = undefined;
-  questionAwaitingSave = false;
-}
-
-function queueQuestionStatus(control?: IntakeControl) {
-  if (!(control instanceof HTMLTextAreaElement) || document.activeElement !== control) return;
-  // Keep the box quiet while typing, including when a new edit follows a save.
-  if (statusQuestion !== control) clearQuestionStatus();
-  clearTimeout(savedMessageTimer);
-  statusQuestion = control;
-  questionAwaitingSave = true;
-  const target = element(`${control.id}-save-status`);
-  if (target.textContent) target.textContent = "";
+  if (message) setStatus(saveStatus, "");
 }
 
 function values(): Record<string, string> {
@@ -69,93 +49,39 @@ function resize(control: IntakeControl) {
   }
 }
 
-function releaseDraftOwnership() {
-  releaseDraftLock?.();
-  releaseDraftLock = undefined;
-}
-
-function pauseConflictingDraft() {
-  draftConflict = true;
-  clearTimeout(saveTimer);
-  clearQuestionStatus();
-  releaseDraftOwnership();
-  draftError("This draft is open or has changed in another tab. Autosave is paused here. Copy any changes you need, then close other intake tabs and reload to use the saved draft.");
-}
-
-function claimDraftOwnership() {
-  if (!navigator.locks || releaseDraftLock || claimingDraftLock || draftConflict) return;
-  claimingDraftLock = true;
-  // Hold ownership until pagehide so its final save can remain synchronous.
-  // This also prevents simultaneous writes from two tabs with the same baseline.
-  void navigator.locks.request(draftKey, { ifAvailable: true }, (lock) => {
-    claimingDraftLock = false;
-    if (!pageActive) return;
-    if (!lock) { if (dirty) pauseConflictingDraft(); return; }
-    return new Promise<void>((release) => {
-      releaseDraftLock = release;
-      if (dirty) saveDraft();
-    });
-  }).catch(() => {
-    claimingDraftLock = false;
-    draftLockFailed = true;
-    if (dirty) saveDraft();
-  });
-}
-
 function saveDraft() {
   clearTimeout(saveTimer);
-  if (!dirty || draftConflict) return;
-  // The typing debounce has elapsed (or an explicit flush was requested).
-  // Local storage writes synchronously, so success can be shown immediately.
-  const questionStatus = questionAwaitingSave && statusQuestion && statusQuestion === document.activeElement
-    ? element(`${statusQuestion.id}-save-status`) : undefined;
+  if (!dirty) return;
+  // Best-effort autosave: the most recent edit wins, with no tab coordination.
   try {
-    // Compare the exact snapshot restored by this tab, including malformed data.
-    // Keep this guard even with a lock: older pages may not participate in locking.
-    const currentDraft = localStorage.getItem(draftKey);
-    if (lastSavedDraft === undefined && currentDraft === null) lastSavedDraft = null;
-    if (currentDraft !== lastSavedDraft) {
-      pauseConflictingDraft();
-      return;
-    }
-    if (navigator.locks && !releaseDraftLock) {
-      if (claimingDraftLock) return;
-      if (draftLockFailed) throw new Error("Draft coordination unavailable");
-      pauseConflictingDraft();
-      return;
-    }
-    const raw = serializeDraft(values());
-    if (questionStatus) questionStatus.textContent = "Saving…";
-    localStorage.setItem(draftKey, raw);
-    lastSavedDraft = raw;
+    localStorage.setItem(draftKey, serializeDraft(values()));
     dirty = false;
     draftError();
-    if (questionStatus) {
-      questionStatus.textContent = "Progress saved.";
-      questionAwaitingSave = false;
-      savedMessageTimer = setTimeout(clearQuestionStatus, 2000);
-    }
+    setStatus(saveStatus, "✓ Saved locally", "success");
   } catch {
-    clearQuestionStatus();
-    draftError("Your browser could not save this draft. Keep this page open until you copy or download your answers.");
+    draftError("Couldn't save. Keep this page open and copy or download your answers.");
   }
 }
 
 function showErrors() {
-  const missing = missingFields(values());
+  const current = values();
+  const missing = invalidFields(current);
   const ids = new Set(missing.map(({ id }) => id));
+  element("email-error").textContent = current.email.trim() ? "Enter a valid email." : "Enter email or Telegram.";
+  if (ids.has("asset-name") || ids.has("asset-symbol")) revealAssetDetails();
   for (const [id, control] of controls) {
     if (ids.has(id)) control.setAttribute("aria-invalid", "true");
     else control.removeAttribute("aria-invalid");
     element(`${id}-error`).hidden = !ids.has(id);
   }
-  const signature = [...ids].join(",");
+  const emailLabel = current.email.trim() ? "Email" : "Email or Telegram";
+  const signature = missing.map(({ id }) => id === "email" ? emailLabel : id).join(",");
   if (signature !== lastMissing) {
     errorList.replaceChildren(...missing.map(({ id, label }) => {
       const item = document.createElement("li");
       const link = document.createElement("a");
       link.href = `#${id}`;
-      link.textContent = label;
+      link.textContent = id === "email" ? emailLabel : label;
       link.addEventListener("click", (event) => {
         event.preventDefault();
         controls.get(id)!.focus();
@@ -172,8 +98,8 @@ function showErrors() {
 function validateForExport() {
   validationStarted = true;
   saveDraft();
-  if (showErrors()) return true;
-  exportStatus.textContent = "Complete the highlighted fields before exporting.";
+  if (showErrors()) { setStatus(exportStatus, ""); return true; }
+  setStatus(exportStatus, "Check the highlighted fields.", "error");
   errorSummary.focus();
   return false;
 }
@@ -181,7 +107,7 @@ function validateForExport() {
 function syncPrint() {
   const current = values();
   element("print-export-date").textContent = intakeExportDate();
-  printDocument.dataset.complete = String(missingFields(current).length === 0);
+  printDocument.dataset.complete = String(invalidFields(current).length === 0);
   printDocument.querySelectorAll<HTMLElement>("[data-print-value]").forEach((target) => {
     const answer = current[target.dataset.printValue!] ?? "";
     if (target.classList.contains("intake-print-answer")) {
@@ -195,40 +121,47 @@ function syncPrint() {
       }));
     } else {
       target.textContent = answer;
+      target.parentElement!.hidden = !answer.trim();
     }
   });
 }
 
+function restoreValues(saved: string) {
+  // Parse the entire draft before touching any answers.
+  const restored = parseDraft(saved);
+  for (const [id, control] of controls) {
+    let value = restored[id] ?? "";
+    if (control instanceof HTMLSelectElement) {
+      value = intakeNetwork(value)?.name ?? value;
+      // Preserve older drafts, including networks outside the lookup list.
+      if (![...control.options].some((option) => option.value === value)) {
+        control.add(new Option(value || "Select a network", value));
+      }
+    }
+    control.value = value;
+    resize(control);
+  }
+}
+
 try {
   const saved = localStorage.getItem(draftKey);
-  lastSavedDraft = saved;
   if (saved) {
     try {
-      const restored = parseDraft(saved);
-      for (const [id, control] of controls) {
-        let value = restored[id];
-        if (control instanceof HTMLSelectElement) {
-          value = intakeNetwork(value)?.name ?? value;
-          // Preserve older drafts, including networks outside the lookup list.
-          if (![...control.options].some((option) => option.value === value)) {
-            control.add(new Option(value || "Select a network", value));
-          }
-        }
-        control.value = value;
-      }
+      restoreValues(saved);
+      setStatus(saveStatus, "Draft restored");
     } catch {
-      draftError("The saved draft could not be restored. New edits will replace it.");
+      draftError("The saved draft could not be restored. New edits will replace it.", "warning");
     }
   }
 } catch {
   draftError("Browser storage is unavailable. Keep this page open until you copy or download your answers.");
 }
 
-function markDirty(control?: IntakeControl) {
+function markDirty() {
   dirty = true;
+  setStatus(exportStatus, "");
   if (validationStarted) showErrors();
-  if (draftConflict) return;
-  queueQuestionStatus(control);
+  setStatus(saveStatus, "");
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveDraft, 500);
 }
@@ -237,18 +170,13 @@ for (const control of controls.values()) {
   resize(control);
   control.addEventListener("input", () => {
     resize(control);
-    markDirty(control);
+    markDirty();
   });
   // Also captures browser autofill and saves when leaving a field.
-  control.addEventListener("change", () => { resize(control); markDirty(control); saveDraft(); });
-  if (control instanceof HTMLTextAreaElement) {
-    control.addEventListener("blur", () => {
-      if (statusQuestion === control) clearQuestionStatus();
-    });
-  }
+  control.addEventListener("change", () => { resize(control); markDirty(); saveDraft(); });
 }
 
-setupAssetLookup({
+const revealAssetDetails = setupAssetLookup({
   chain: element<HTMLSelectElement>("chain"),
   address: element<HTMLInputElement>("contract-address"),
   name: element<HTMLInputElement>("asset-name"),
@@ -269,7 +197,6 @@ element<HTMLButtonElement>("download-markdown").addEventListener("click", () => 
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  exportStatus.textContent = "Download started (.md). Send the file to your yRisk contact on Telegram.";
 });
 
 copyButton.addEventListener("click", async () => {
@@ -277,9 +204,9 @@ copyButton.addEventListener("click", async () => {
   copyButton.disabled = true;
   try {
     await navigator.clipboard.writeText(exportMarkdown(values()));
-    exportStatus.textContent = "Responses copied. Paste them into a message to your yRisk contact on Telegram.";
+    setStatus(exportStatus, "✓ Copied", "success");
   } catch {
-    exportStatus.textContent = "Your browser could not copy the responses. Please download them instead.";
+    setStatus(exportStatus, "Couldn't copy. Download Markdown instead.", "error");
   } finally {
     copyButton.disabled = false;
   }
@@ -289,7 +216,6 @@ element<HTMLButtonElement>("print-intake").addEventListener("click", () => {
   if (!validateForExport()) return;
   syncPrint();
   window.print();
-  exportStatus.textContent = "Choose Save as PDF in the print dialog, then send the file to your yRisk contact on Telegram.";
 });
 
 // Native print shortcuts also use the complete text layout. Incomplete forms
@@ -300,24 +226,9 @@ window.addEventListener("beforeprint", () => {
   printDocument.removeAttribute("aria-hidden");
 });
 window.addEventListener("afterprint", () => printDocument.setAttribute("aria-hidden", "true"));
-window.addEventListener("blur", clearQuestionStatus);
-window.addEventListener("pagehide", () => {
-  clearQuestionStatus();
-  saveDraft();
-  pageActive = false;
-  releaseDraftOwnership();
-});
-window.addEventListener("pageshow", () => { pageActive = true; claimDraftOwnership(); });
-window.addEventListener("storage", (event) => {
-  if (event.key !== draftKey && event.key !== null) return;
-  try {
-    if (event.storageArea === localStorage && localStorage.getItem(draftKey) !== lastSavedDraft) {
-      pauseConflictingDraft();
-    }
-  } catch { /* Save failures are reported by saveDraft; exports remain available. */ }
-});
+window.addEventListener("pagehide", saveDraft);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") { clearQuestionStatus(); saveDraft(); }
+  if (document.visibilityState === "hidden") saveDraft();
 });
 let resizeFrame = 0;
 window.addEventListener("resize", () => {
@@ -325,7 +236,6 @@ window.addEventListener("resize", () => {
   resizeFrame = requestAnimationFrame(() => controls.forEach(resize));
 });
 form.addEventListener("submit", (event) => event.preventDefault());
-claimDraftOwnership();
 for (const id of ["download-markdown", "copy-responses", "print-intake"]) {
   element<HTMLButtonElement>(id).disabled = false;
 }

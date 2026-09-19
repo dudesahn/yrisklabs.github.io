@@ -1,4 +1,4 @@
-import { parseTokenInput, lookupTokenMetadata, createCoinGeckoLookup } from "../lib/token-lookup.mjs";
+import { checksumAddress, parseTokenInput, lookupTokenMetadata, createCoinGeckoLookup } from "../lib/token-lookup.mjs";
 
 type LookupControls = {
   chain: HTMLSelectElement;
@@ -10,9 +10,8 @@ type LookupControls = {
 
 export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: LookupControls) {
   const status = document.getElementById("token-lookup-status")!;
-  const summary = document.getElementById("token-summary")!;
-  const title = document.getElementById("token-summary-title")!;
-  const link = document.getElementById("token-explorer") as HTMLAnchorElement;
+  const metadata = document.getElementById("asset-metadata")!;
+  const manual = document.getElementById("enter-token-manually") as HTMLButtonElement;
   const image = document.getElementById("token-logo") as HTMLImageElement;
   const apply = document.getElementById("apply-token-details") as HTMLButtonElement;
   const retry = document.getElementById("retry-token-lookup") as HTMLButtonElement;
@@ -28,9 +27,16 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
   let activeImage: HTMLImageElement | undefined;
   let imageTimeout: ReturnType<typeof setTimeout> | undefined;
 
-  function message(text: string, loading = false) {
+  function message(text: string, tone: "neutral" | "loading" | "quiet" | "warning" | "error" = "neutral") {
     status.textContent = text;
-    status.dataset.loading = String(loading);
+    status.dataset.loading = String(tone === "loading");
+    status.dataset.tone = tone;
+    status.classList.toggle("intake-sr-only", tone === "quiet");
+  }
+
+  function revealDetails() {
+    metadata.hidden = false;
+    manual.hidden = true;
   }
 
   function showApply() {
@@ -56,14 +62,14 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
     activeImage = undefined;
     image.hidden = true;
     image.removeAttribute("src");
-    summary.hidden = true;
-    link.removeAttribute("href");
     found = undefined;
     apply.hidden = true;
     retry.hidden = true;
     // Name and symbol belong to the selected asset, including when restored
     // from a draft. Only keep them on initial load or a same-asset retry.
     if (clearDetails) {
+      metadata.hidden = true;
+      manual.hidden = false;
       edited.clear();
       let cleared = false;
       for (const control of [name, symbol]) {
@@ -74,6 +80,11 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
   }
 
   function lookup(force = false) {
+    const addressText = checksumAddress(address.value.trim());
+    if (addressText !== address.value) {
+      address.value = addressText;
+      onUpdate();
+    }
     const token = parseTokenInput(address.value, chain.value);
     const input = token?.key ?? `${chain.value}:${address.value.trim()}`;
     // Normalize even when a pasted link identifies the token already on screen.
@@ -91,20 +102,17 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
     lastTokenKey = token?.key;
     reset(clearDetails);
     if (!token) {
-      message(address.value.trim() ? "Enter a full token address or a supported explorer link for lookup. You can also enter the details manually." : "Paste a token address or explorer link to fill in its details.");
+      message("");
+      if (address.value.trim().toLowerCase() === "n/a") revealDetails();
       return;
     }
     const current = generation;
     const isCurrent = () => current === generation;
-    title.textContent = token.network.name;
-    link.textContent = token.address;
-    link.href = `https://${token.network.explorer}/token/${token.address}`;
-    summary.hidden = false;
     message("");
     debounce = setTimeout(() => {
       if (!isCurrent()) return;
       controller = new AbortController();
-      loadingDelay = setTimeout(() => { if (isCurrent()) message("Looking up token…", true); }, 200);
+      loadingDelay = setTimeout(() => { if (isCurrent()) message("Looking up…", "loading"); }, 200);
       void lookupTokenMetadata(token, controller.signal).then((details) => {
         if (!isCurrent()) return;
         clearTimeout(loadingDelay);
@@ -117,11 +125,10 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
           }
         }
         if (changed) onUpdate();
-        const label = [details.name, details.symbol ? `(${details.symbol})` : ""].filter(Boolean).join(" ");
-        title.textContent = label ? `${label} · ${token.network.name}` : token.network.name;
-        if (details.name && details.symbol) message("Token details found. Review or edit them below.");
-        else if (details.name || details.symbol) message("Some token details were unavailable. Please fill in the missing details below.");
-        else message("Token details could not be loaded. Enter them below or try again.");
+        revealDetails();
+        if (details.name && details.symbol) message("Asset details loaded.", "quiet");
+        else if (details.name || details.symbol) message(`Enter the missing ${details.name ? "symbol" : "name"}.`, "warning");
+        else message("Couldn't load details. Enter manually.", "warning");
         retry.hidden = !!(details.name && details.symbol);
         showApply();
       });
@@ -146,7 +153,17 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
   image.addEventListener("error", () => { image.hidden = true; });
   address.addEventListener("input", () => lookup());
   address.addEventListener("change", () => lookup());
+  address.addEventListener("blur", () => {
+    if (address.value.trim() && !parseTokenInput(address.value, chain.value) && metadata.hidden) {
+      message("Enter a full address or supported explorer link.", "error");
+    }
+  });
   chain.addEventListener("change", () => lookup());
+  manual.addEventListener("click", () => {
+    revealDetails();
+    message("");
+    name.focus();
+  });
   apply.addEventListener("click", () => {
     if (!found) return;
     for (const [control, value] of [[name, found.name], [symbol, found.symbol]] as const) {
@@ -154,8 +171,10 @@ export function setupAssetLookup({ chain, address, name, symbol, onUpdate }: Loo
     }
     onUpdate();
     showApply();
-    message("Token details updated. You can still edit them below.");
+    message("Asset details updated.", "quiet");
   });
   retry.addEventListener("click", () => lookup(true));
+  if (name.value || symbol.value) revealDetails();
   lookup();
+  return revealDetails;
 }

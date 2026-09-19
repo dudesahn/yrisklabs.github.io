@@ -11,6 +11,10 @@
   --yrisk-paper: #f5f4f0;
   --yrisk-white: #ffffff;
   --yrisk-accent: #0657f9;
+  /* Functional feedback only; keep ordinary content and controls neutral. */
+  --yrisk-success: #356447;
+  --yrisk-warning: #805d20;
+  --yrisk-error: #a23f3b;
 
   /* Supporting tones on paper/white; check contrast on the actual surface. */
   --yrisk-ink-secondary: rgb(9 9 9 / 65%);

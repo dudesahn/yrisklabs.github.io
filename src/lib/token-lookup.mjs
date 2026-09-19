@@ -1,3 +1,16 @@
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+
+/** EIP-55 casing; leave incomplete or manual entries unchanged. @param {string} address */
+export function checksumAddress(address) {
+  if (!/^0x[\da-f]{40}$/i.test(address)) return address;
+  const hex = address.slice(2).toLowerCase();
+  const hash = bytesToHex(keccak_256(new TextEncoder().encode(hex)));
+  return "0x" + [...hex].map((character, index) =>
+    parseInt(hash[index], 16) >= 8 ? character.toUpperCase() : character,
+  ).join("");
+}
+
 // Public, browser-accessible services only. Never add private RPC URLs or keys.
 export const intakeNetworks = [
   { id: 1, name: "Ethereum", rpc: "https://ethereum-rpc.publicnode.com", explorer: "etherscan.io", platform: "ethereum" },
@@ -29,7 +42,7 @@ export function parseTokenInput(input, selectedNetwork) {
     } catch { return null; }
   }
   if (!network) return null;
-  return { network, address: `0x${address.slice(2)}`, key: `${network.id}:${address.toLowerCase()}` };
+  return { network, address: checksumAddress(address), key: `${network.id}:${address.toLowerCase()}` };
 }
 
 /** Decode bounded ERC-20 string returns and legacy bytes32 metadata. @param {unknown} result */

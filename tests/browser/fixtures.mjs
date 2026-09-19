@@ -25,7 +25,7 @@ export function gate() {
 }
 export const completeValues = (overrides = {}) => ({
   ...Object.fromEntries(intakeFields.map(({ id }) => [id, "N/A"])),
-  chain: "Ethereum", "asset-name": "Manual Asset", "asset-symbol": "MAN", ...overrides,
+  chain: "Ethereum", "asset-name": "Manual Asset", "asset-symbol": "MAN", email: "", telegram: "@asset_team", ...overrides,
 });
 
 export async function seedDraft(page, values) {
