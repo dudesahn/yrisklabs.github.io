@@ -160,6 +160,30 @@ visual pagination and the native Save as PDF dialog still need a manual check
 when changing print CSS. Live provider availability is checked separately from
 the deterministic regression suite.
 
+The PR workflow publishes the `test` check. To require it before merging to `main`,
+an upstream repository admin must configure a required status check in GitHub.
+They can add `test` from **GitHub Actions** to the existing **Main Branch Protection**
+ruleset and require the branch to be up to date. Alternatively, import
+[Require website tests](.github/rulesets/require-website-tests.json) as follows
+(only one of these methods is needed):
+
+1. Open `yRiskLabs/yrisklabs.github.io` **Settings → Rules → Rulesets**.
+2. Keep the existing **Main Branch Protection** ruleset. Choose
+   **New ruleset → Import a ruleset** and select the JSON file.
+3. Confirm the imported rule is **Active**, targets `main`, requires the `test`
+   check from **GitHub Actions**, requires the branch to be up to date, and has
+   no bypass actors. Save the ruleset.
+4. Confirm a PR targeting `main` shows `test` as a required check. A missing or
+   failing check must block merging; a passing check still needs the review
+   required by **Main Branch Protection**.
+
+Committing or merging the JSON file does not activate it; the import is a separate,
+one-time GitHub settings change. Later changes must also be applied to the imported
+ruleset. The GitHub Actions integration ID (`15368`) binds the required check to
+its expected source. Keep the workflow's `test` job name and the ruleset's check
+context aligned, and keep the workflow running on every PR. Importing this
+additional ruleset preserves the existing review, force-push, and deletion rules.
+
 The shared layout supplies an explicit Open Graph and Twitter image for all pages
 using it, including reports and research. `public/yrisk-social.png` is an unchanged
 copy of `brand-kit/exports/yrisk-avatar-512.png`; its square, centered mark stays

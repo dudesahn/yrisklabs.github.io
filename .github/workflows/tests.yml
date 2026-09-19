@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   test:
+    # Keep this check name in sync with .github/rulesets/require-website-tests.json.
+    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
