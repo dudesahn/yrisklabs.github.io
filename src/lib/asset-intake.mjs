@@ -22,13 +22,13 @@ export const intakeQuestions = [
   },
   {
     id: "permissions",
-    label: "Why were these permission controls chosen?",
-    description: "Upgrade, fund movement and pause powers; multisig or voting design; safeguards against mistakes, compromised signers and governance attacks.",
+    label: "How did you choose the controls around sensitive permissions?",
+    description: "For multisigs or token voting that can upgrade contracts, move funds or pause redemptions, what informed the setup? What safeguards address mistakes, compromised signers or governance attacks?",
   },
   {
     id: "backing",
     label: "How is the asset backed?",
-    description: "Custody, control and independent verification. Link reserve reports, dashboards or APIs.",
+    description: "Where are the reserves or portfolio held, who controls them, and how can we track and independently verify them? Link any reports, dashboards or APIs.",
   },
   {
     id: "redemptions",
@@ -47,8 +47,8 @@ export const intakeQuestions = [
   },
   {
     id: "context",
-    label: "What do people tend to miss?",
-    description: "Common misunderstandings or overlooked risks.",
+    label: "What do people tend to miss about the asset?",
+    description: "Share useful context or common misunderstandings we should keep in mind.",
   },
 ];
 
