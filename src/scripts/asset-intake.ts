@@ -27,6 +27,12 @@ let questionAwaitingSave = false;
 let dirty = false;
 let validationStarted = false;
 let lastMissing = "";
+let lastSavedDraft: string | null | undefined;
+let draftConflict = false;
+let releaseDraftLock: (() => void) | undefined;
+let claimingDraftLock = false;
+let draftLockFailed = false;
+let pageActive = true;
 
 function draftError(message = "") {
   if (draftStatus.textContent !== message) draftStatus.textContent = message;
@@ -63,20 +69,69 @@ function resize(control: IntakeControl) {
   }
 }
 
+function releaseDraftOwnership() {
+  releaseDraftLock?.();
+  releaseDraftLock = undefined;
+}
+
+function pauseConflictingDraft() {
+  draftConflict = true;
+  clearTimeout(saveTimer);
+  clearQuestionStatus();
+  releaseDraftOwnership();
+  draftError("This draft is open or has changed in another tab. Autosave is paused here. Copy any changes you need, then close other intake tabs and reload to use the saved draft.");
+}
+
+function claimDraftOwnership() {
+  if (!navigator.locks || releaseDraftLock || claimingDraftLock || draftConflict) return;
+  claimingDraftLock = true;
+  // Hold ownership until pagehide so its final save can remain synchronous.
+  // This also prevents simultaneous writes from two tabs with the same baseline.
+  void navigator.locks.request(draftKey, { ifAvailable: true }, (lock) => {
+    claimingDraftLock = false;
+    if (!pageActive) return;
+    if (!lock) { if (dirty) pauseConflictingDraft(); return; }
+    return new Promise<void>((release) => {
+      releaseDraftLock = release;
+      if (dirty) saveDraft();
+    });
+  }).catch(() => {
+    claimingDraftLock = false;
+    draftLockFailed = true;
+    if (dirty) saveDraft();
+  });
+}
+
 function saveDraft() {
   clearTimeout(saveTimer);
-  if (!dirty) return;
+  if (!dirty || draftConflict) return;
   // The typing debounce has elapsed (or an explicit flush was requested).
   // Local storage writes synchronously, so success can be shown immediately.
   const questionStatus = questionAwaitingSave && statusQuestion && statusQuestion === document.activeElement
     ? element(`${statusQuestion.id}-save-status`) : undefined;
-  if (questionStatus) questionStatus.textContent = "Saving…";
   try {
-    localStorage.setItem(draftKey, serializeDraft(values()));
+    // Compare the exact snapshot restored by this tab, including malformed data.
+    // Keep this guard even with a lock: older pages may not participate in locking.
+    const currentDraft = localStorage.getItem(draftKey);
+    if (lastSavedDraft === undefined && currentDraft === null) lastSavedDraft = null;
+    if (currentDraft !== lastSavedDraft) {
+      pauseConflictingDraft();
+      return;
+    }
+    if (navigator.locks && !releaseDraftLock) {
+      if (claimingDraftLock) return;
+      if (draftLockFailed) throw new Error("Draft coordination unavailable");
+      pauseConflictingDraft();
+      return;
+    }
+    const raw = serializeDraft(values());
+    if (questionStatus) questionStatus.textContent = "Saving…";
+    localStorage.setItem(draftKey, raw);
+    lastSavedDraft = raw;
     dirty = false;
     draftError();
     if (questionStatus) {
-      questionStatus.textContent = "Saved in this browser.";
+      questionStatus.textContent = "Progress saved.";
       questionAwaitingSave = false;
       savedMessageTimer = setTimeout(clearQuestionStatus, 2000);
     }
@@ -146,6 +201,7 @@ function syncPrint() {
 
 try {
   const saved = localStorage.getItem(draftKey);
+  lastSavedDraft = saved;
   if (saved) {
     try {
       const restored = parseDraft(saved);
@@ -170,8 +226,9 @@ try {
 
 function markDirty(control?: IntakeControl) {
   dirty = true;
-  queueQuestionStatus(control);
   if (validationStarted) showErrors();
+  if (draftConflict) return;
+  queueQuestionStatus(control);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveDraft, 500);
 }
@@ -244,7 +301,21 @@ window.addEventListener("beforeprint", () => {
 });
 window.addEventListener("afterprint", () => printDocument.setAttribute("aria-hidden", "true"));
 window.addEventListener("blur", clearQuestionStatus);
-window.addEventListener("pagehide", () => { clearQuestionStatus(); saveDraft(); });
+window.addEventListener("pagehide", () => {
+  clearQuestionStatus();
+  saveDraft();
+  pageActive = false;
+  releaseDraftOwnership();
+});
+window.addEventListener("pageshow", () => { pageActive = true; claimDraftOwnership(); });
+window.addEventListener("storage", (event) => {
+  if (event.key !== draftKey && event.key !== null) return;
+  try {
+    if (event.storageArea === localStorage && localStorage.getItem(draftKey) !== lastSavedDraft) {
+      pauseConflictingDraft();
+    }
+  } catch { /* Save failures are reported by saveDraft; exports remain available. */ }
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") { clearQuestionStatus(); saveDraft(); }
 });
@@ -254,6 +325,7 @@ window.addEventListener("resize", () => {
   resizeFrame = requestAnimationFrame(() => controls.forEach(resize));
 });
 form.addEventListener("submit", (event) => event.preventDefault());
+claimDraftOwnership();
 for (const id of ["download-markdown", "copy-responses", "print-intake"]) {
   element<HTMLButtonElement>(id).disabled = false;
 }

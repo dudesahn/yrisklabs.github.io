@@ -162,16 +162,25 @@ test("a failed retry preserves previously found partial metadata", async ({ page
 });
 
 test("restored manual answers survive lookups, and contact or narrative text never enters requests", async ({ page, network }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => {} } });
+    window.print = () => window.dispatchEvent(new Event("beforeprint"));
+  });
   await seedDraft(page, completeValues({ "contract-address": addressA, backing: "PRIVATE NARRATIVE", contact: "PRIVATE CONTACT" }));
   await openForm(page);
   await expect(page.locator("#token-lookup-status")).toContainText("Token details found");
   await expect(page.locator("#asset-name")).toHaveValue("Manual Asset");
   await expect(page.locator("#asset-symbol")).toHaveValue("MAN");
   await expect(page.locator("#backing")).toHaveValue("PRIVATE NARRATIVE");
-  expect(JSON.stringify(network.requests)).not.toMatch(/PRIVATE|Manual Asset|MAN/);
+  await page.locator("#contact").fill("PRIVATE CONTACT edited");
+  await page.locator("#backing").fill("PRIVATE NARRATIVE edited");
+  await page.locator("#copy-responses").click();
+  await expect(page.locator("#export-status")).toContainText("Responses copied");
+  await page.locator("#print-intake").click();
   const download = await downloadedText(page);
   expect(download.text).toContain("PRIVATE NARRATIVE");
   expect(download.text).toContain("PRIVATE CONTACT");
+  expect(JSON.stringify(network.allRequests)).not.toMatch(/PRIVATE|Manual Asset|MAN/);
 });
 
 test("lookup timeout clears the spinner and leaves manual exports available", async ({ page, network }) => {

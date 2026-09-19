@@ -1,6 +1,12 @@
 import { test as base, expect } from "@playwright/test";
 import { intakeFields, draftKey, serializeDraft } from "../../src/lib/asset-intake.mjs";
 import { intakeNetworks } from "../../src/lib/token-lookup.mjs";
+import { readFileSync } from "node:fs";
+
+const intakeHtml = readFileSync(new URL("../../dist/asset-intake/index.html", import.meta.url), "utf8");
+const localPaths = new Set(["/asset-intake/", "/favicon.svg",
+  ...[...intakeHtml.matchAll(/(?:src|href)="(\/_astro\/[^"?#]+)"/g)].map((match) => match[1]),
+]);
 
 export { expect, intakeNetworks, intakeFields, draftKey };
 export const addressA = "0x" + "1".repeat(40);
@@ -48,12 +54,13 @@ export async function downloadedText(page) {
 
 export const test = base.extend({
   // No test relies on live RPC, CoinGecko, or respondent information. Unexpected
-  // external traffic fails the test instead of silently reaching the internet.
+  // requests fail the test, including accidental same-origin form submissions.
   network: [async ({ context, page, baseURL }, use) => {
-    const errors = [], unexpected = [], requests = [];
+    const errors = [], unexpected = [], requests = [], allRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    context.on("page", (other) => other.on("pageerror", (error) => errors.push(error.message)));
     const network = {
-      requests,
+      requests, allRequests,
       rpc: async ({ data, chain }) => ({ json: {
         jsonrpc: "2.0", id: data.id,
         result: abiString(data.id === 1 ? `${data.params[0].to === addressB ? "Second" : "Example"} ${chain.name}` : `${data.params[0].to === addressB ? "S" : "T"}${chain.id}`),
@@ -67,10 +74,17 @@ export const test = base.extend({
     await context.route("**/*", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
-      if (url.origin === baseURL) return route.continue();
+      const entry = { url: url.href, method: request.method(), body: request.postData(), headers: await request.allHeaders() };
+      allRequests.push(entry);
+      if (url.origin === baseURL) {
+        if (entry.method === "GET" && !url.search && localPaths.has(url.pathname) &&
+            ["document", "script", "stylesheet", "image"].includes(request.resourceType())) return route.continue();
+        unexpected.push(entry);
+        return route.abort();
+      }
       const chain = intakeNetworks.find((item) => new URL(item.rpc).host === url.host);
       let response;
-      requests.push({ url: url.href, body: request.postData() });
+      requests.push(entry);
       if (chain) response = await network.rpc({ data: request.postDataJSON(), chain, request });
       else if (url.host === "tokens.coingecko.com") {
         const listChain = intakeNetworks.find((item) => url.pathname === `/${item.platform}/all.json`);
@@ -88,7 +102,7 @@ export const test = base.extend({
       }
     });
     await use(network);
-    expect(unexpected, "Only documented lookup services may receive requests").toEqual([]);
+    expect(unexpected, "Only expected static files and documented lookup services may receive requests").toEqual([]);
     expect(errors, "The form must not raise uncaught browser errors").toEqual([]);
   }, { auto: true }],
 });

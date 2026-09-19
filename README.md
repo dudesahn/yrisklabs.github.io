@@ -99,10 +99,17 @@ or external export service. Autosave is always on and writes after a
 500 ms typing pause, field changes, and page hiding. Returning in the same browser
 restores an incomplete draft. Narrative answer boxes stay quiet while typing.
 After the typing pause, a small status below the active box shows “Saving…” during
-the local write, then “Saved in this browser.” for two seconds. It clears on the
+the local write, then “Progress saved.” for two seconds. It clears on the
 next edit or on leaving the box. Detail fields and restored drafts save
 silently; storage errors stay visible at the top until saving succeeds.
 There are no autosave controls. Existing drafts remain compatible.
+Only one open intake tab owns autosave in browsers with Web Locks. The page also
+checks that the saved draft still matches the version it loaded before writing.
+If another tab owns or changes the draft, autosave pauses with recovery guidance;
+this tab's answers stay visible and exportable. Copy any unsaved changes, close
+other intake tabs, and reload to continue from the saved draft. Ownership releases
+when leaving the page (`pagehide`) and is reacquired on return. Browsers without Web Locks
+retain the snapshot check, but cannot serialize simultaneous writes across tabs.
 Browser storage failures are surfaced without blocking editing
 or exports.
 Private browsing or clearing site data can remove drafts.
@@ -127,15 +134,18 @@ npm run test:all
 `127.0.0.1:4322`. `npm run test:browser` can reuse an already current build. It
 starts and stops its own server; keep port 4322 available. Tests run in Chromium
 and WebKit, use isolated browser contexts, mock RPC/CoinGecko responses, and reject
-unexpected external requests. No keys, wallet, or live services are required.
+unexpected requests, including submissions to the website itself. Only known
+static assets and the page may use the local server. No keys, wallet, or live
+services are required.
 
-Coverage includes draft corruption and storage failures, autosave timing and
+Coverage includes draft corruption, concurrent tabs and storage failures, autosave timing and
 page hiding, required-field validation, clipboard failure, complete Markdown and
 print output, narrow layouts, all four networks, cancellation and late results,
 manual edits, partial/failed retries, missing logos, and untrusted metadata. PR
 checks (including fork PRs) and pushes to `main` run the full suite with read-only
 repository permissions. Failed browser checks retain screenshots and traces for
-seven days. This workflow does not deploy the site.
+seven days. This workflow does not deploy the site. Export comparison tests use
+a fixed clock; UTC date-boundary behavior is checked separately.
 
 Browser tests verify print content and generate a long-answer PDF in Chromium;
 visual pagination and the native Save as PDF dialog still need a manual check

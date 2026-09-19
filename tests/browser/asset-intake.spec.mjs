@@ -1,5 +1,5 @@
 import { test, expect, intakeFields, draftKey, completeValues, seedDraft, openForm, downloadedText } from "./fixtures.mjs";
-import { exportMarkdown } from "../../src/lib/asset-intake.mjs";
+import { exportMarkdown, serializeDraft } from "../../src/lib/asset-intake.mjs";
 
 for (const action of ["download-markdown", "copy-responses", "print-intake"]) {
   test(`${action} rejects empty and whitespace-only answers and focuses the error summary`, async ({ page, network }) => {
@@ -40,7 +40,7 @@ test("autosave debounces typing, flushes on page hiding, and restores the last e
   expect(await page.evaluate(() => window.saveFeedback)).toEqual([]);
   await page.clock.runFor(101);
   expect(await page.evaluate(() => window.saveFeedback)).toEqual(["Saving…"]);
-  await expect(page.locator("#backing-save-status")).toHaveText("Saved in this browser.");
+  await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
   await expect(page.locator("#draft-status")).toBeHidden();
   await page.locator("#backing").fill("Final edit before leaving");
   await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
@@ -63,10 +63,134 @@ test("corrupt drafts stay intact until a new edit, then saving recovers", async 
   await expect(page.locator("#draft-status")).toContainText("could not be restored");
   expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBe("{broken JSON");
   await page.locator("#backing").fill("Recovered answer");
-  await expect(page.locator("#backing-save-status")).toHaveText("Saved in this browser.");
+  await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
   await expect(page.locator("#draft-status")).toBeHidden();
   await page.reload();
   await expect(page.locator("#backing")).toHaveValue("Recovered answer");
+});
+
+test("an older tab cannot overwrite a newer draft, but can export its changes and recover by reloading", async ({ page, context }) => {
+  await seedDraft(page, completeValues({ backing: "Original answer" }));
+  await openForm(page);
+  const other = await context.newPage();
+  await openForm(other);
+  await page.locator("#backing").fill("New answer saved in the first tab");
+  await page.locator("#contact").focus();
+  await expect(other.locator("#draft-status")).toContainText("another tab");
+  await other.locator("#contact").fill("Unsaved contact in the older tab");
+  const exported = await downloadedText(other);
+  expect(exported.text).toContain("Unsaved contact in the older tab");
+  await other.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values, draftKey);
+  expect(saved.backing).toBe("New answer saved in the first tab");
+  expect(saved.contact).toBe("N/A");
+  await expect(other.locator("#contact")).toHaveValue("Unsaved contact in the older tab");
+  await expect(other.locator("#draft-status")).toContainText("Autosave is paused");
+  await page.close();
+  await other.reload();
+  await expect(other.locator("#backing")).toHaveValue(saved.backing);
+  await expect(other.locator("#draft-status")).toBeHidden();
+  await other.locator("#backing").fill("Recovered after reloading");
+  await expect(other.locator("#backing-save-status")).toHaveText("Progress saved.");
+  expect(await other.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("Recovered after reloading");
+});
+
+test("only one tab can save even when storage notifications are delayed and both drafts start identical", async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const add = window.addEventListener.bind(window);
+    window.addEventListener = (type, ...args) => { if (type !== "storage") add(type, ...args); };
+  });
+  await seedDraft(page, completeValues());
+  await openForm(page);
+  const other = await context.newPage();
+  await openForm(other);
+  // The second tab attempts the first write, before either snapshot has changed.
+  await other.locator("#backing").fill("Second tab's answer");
+  await other.locator("#contact").focus();
+  await expect(other.locator("#draft-status")).toContainText("Autosave is paused");
+  expect(await other.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("N/A");
+  await page.locator("#backing").fill("First tab's answer");
+  await page.locator("#contact").focus();
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("First tab's answer");
+  await expect(other.locator("#backing")).toHaveValue("Second tab's answer");
+});
+
+for (const replacement of ["newer draft", "cleared draft"]) {
+  test(`${replacement}: the pre-save check catches changes without a storage event`, async ({ page }) => {
+    await seedDraft(page, completeValues());
+    await openForm(page);
+    const raw = replacement === "newer draft" ? serializeDraft(completeValues({ backing: "Saved elsewhere" })) : null;
+    // Same-document writes dispatch no storage event, as if a notification were missed.
+    await page.evaluate(({ key, raw }) => raw === null ? localStorage.removeItem(key) : localStorage.setItem(key, raw), { key: draftKey, raw });
+    await page.locator("#backing").fill("Keep this unsaved answer visible");
+    await page.locator("#contact").focus();
+    await expect(page.locator("#draft-status")).toContainText("Autosave is paused");
+    expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBe(raw);
+    await expect(page.locator("#backing-save-status")).toBeEmpty();
+    expect((await downloadedText(page)).text).toContain("Keep this unsaved answer visible");
+  });
+}
+
+test("browsers without Web Locks still save and detect changed snapshots", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "locks", { value: undefined }));
+  await openForm(page);
+  await page.locator("#backing").fill("Saved with the compatibility fallback");
+  await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
+  await page.evaluate((key) => localStorage.removeItem(key), draftKey);
+  await page.locator("#backing").fill("Keep this answer");
+  await page.locator("#contact").focus();
+  await expect(page.locator("#draft-status")).toContainText("Autosave is paused");
+  expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
+});
+
+test("failed tab coordination leaves exporting available and reports the save failure", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "locks", { value: {
+    request: async () => { throw new DOMException("Unavailable", "SecurityError"); },
+  } }));
+  await seedDraft(page, completeValues());
+  await openForm(page);
+  await page.locator("#backing").fill("Answers remain exportable");
+  await expect(page.locator("#draft-status")).toContainText("could not save");
+  expect((await downloadedText(page)).text).toContain("Answers remain exportable");
+});
+
+for (const outcome of ["granted", "busy", "failed"]) {
+  test(`delayed draft ownership ${outcome}: edits made while waiting are handled explicitly`, async ({ page }) => {
+    await page.addInitScript((outcome) => Object.defineProperty(navigator, "locks", { value: {
+      request: async (_name, _options, callback) => {
+        await new Promise((resolve) => { window.finishCoordination = resolve; });
+        if (outcome === "failed") throw new Error("Coordination unavailable");
+        return callback(outcome === "granted" ? {} : null);
+      },
+    } }), outcome);
+    await page.clock.install();
+    await openForm(page);
+    await page.locator("#backing").fill("Typed while ownership was pending");
+    await page.clock.runFor(501);
+    expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
+    await expect(page.locator("#backing-save-status")).toBeEmpty();
+    await page.evaluate(() => window.finishCoordination());
+    if (outcome === "granted") {
+      await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
+      expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("Typed while ownership was pending");
+    } else {
+      await expect(page.locator("#draft-status")).toContainText(outcome === "busy" ? "Autosave is paused" : "could not save");
+      expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
+    }
+  });
+}
+
+test("returning to a page reacquires draft ownership and saves subsequent edits", async ({ page }) => {
+  await page.clock.install();
+  await openForm(page);
+  await page.locator("#backing").fill("Before leaving");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("Before leaving");
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
+  await page.locator("#backing").fill("After returning");
+  await page.clock.runFor(501);
+  await expect(page.locator("#backing-save-status")).toHaveText("Progress saved.");
+  expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)).values.backing, draftKey)).toBe("After returning");
 });
 
 test("question save feedback is local, temporary, and cleared on leaving the box", async ({ page }) => {
@@ -84,12 +208,12 @@ test("question save feedback is local, temporary, and cleared on leaving the box
   expect(Math.abs(before.x + before.width - box.x - box.width)).toBeLessThan(1);
   expect(await status.evaluate((node) => getComputedStyle(node).textAlign)).toBe("right");
   await page.clock.runFor(501);
-  await expect(status).toHaveText("Saved in this browser.");
+  await expect(status).toHaveText("Progress saved.");
   await page.clock.runFor(1500);
   await answer.fill("Another edit");
   await expect(status).toBeEmpty();
   await page.clock.runFor(501);
-  await expect(status).toHaveText("Saved in this browser.");
+  await expect(status).toHaveText("Progress saved.");
   await page.clock.runFor(2001);
   await expect(status).toBeEmpty();
   const after = await status.boundingBox();
@@ -104,7 +228,7 @@ test("question save feedback is local, temporary, and cleared on leaving the box
   await expect(status).toBeEmpty(); // Refocusing does not replay an old save.
   await answer.fill("Saved before leaving");
   await page.clock.runFor(501);
-  await expect(status).toHaveText("Saved in this browser.");
+  await expect(status).toHaveText("Progress saved.");
   await page.locator("#liquidity").focus();
   await expect(status).toBeEmpty();
   await page.locator("#liquidity").fill("New question");
@@ -151,7 +275,7 @@ test("failed saves never show success, errors survive blur, and a later save cle
   await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
   await page.locator("#liquidity").fill("Storage recovered");
   await page.clock.runFor(501);
-  await expect(page.locator("#liquidity-save-status")).toHaveText("Saved in this browser.");
+  await expect(page.locator("#liquidity-save-status")).toHaveText("Progress saved.");
   await expect(page.locator("#draft-status")).toBeHidden();
 });
 
@@ -191,6 +315,7 @@ for (const failure of ["blocked", "quota"]) {
 }
 
 test("copy and download use identical complete Markdown and dated filenames", async ({ page, network }) => {
+  await page.clock.setFixedTime(new Date("2026-09-19T12:00:00Z"));
   const longAnswer = "Réserves 日本語\n\n- A detail\n- Another detail\n\n" + "Long paragraph. ".repeat(3000) + "END OF ANSWER";
   const values = completeValues({ "asset-name": "Test Asset", backing: longAnswer });
   await seedDraft(page, values);
@@ -206,6 +331,7 @@ test("copy and download use identical complete Markdown and dated filenames", as
   const download = await downloadedText(page);
   expect(download.text).toBe(copied);
   expect(download.filename).toBe(`yrisk-asset-intake-test-asset-${date}.md`);
+  expect(date).toBe("2026-09-19");
   expect(network.requests).toEqual([]);
 });
 
